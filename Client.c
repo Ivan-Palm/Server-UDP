@@ -1,0 +1,183 @@
+#include<netdb.h>
+#include<string.h>
+#include<stdlib.h>
+#include<stdio.h>
+#include<netinet/in.h>
+#include<sys/types.h>
+#include<netdb.h>
+#include<unistd.h>
+#include<arpa/inet.h>
+#include<sys/socket.h>
+#include<unistd.h>
+#include<fcntl.h>
+#include<math.h>
+#include<sys/mman.h>
+#include<sys/time.h>
+#include <errno.h>
+#include <pthread.h>
+
+
+#define PORT 8090 // porta di default per l'inizio delle conversazioni client-server
+#define SIZE_MESSAGE_BUFFER 1064 // dimensione totale del messaggio che inviamo nell'applicativo
+#define SA struct sockaddr // struttura della socket
+#define PASSWORD 11031992 // pw di utility per gestire la chiusura del server
+#define PASSWORD2 14031995 // pw di utility per gestire l'impossibilità di aggiungere un client
+
+
+struct timeval t;	//struttura per calcolare il tempo trascorso
+struct sockaddr_in servaddr;	// struct di supporto della socket
+socklen_t len;	// lunghezza della struct della socket
+char file_name[128];	// buffer per salvare il nome del file
+char buffer[SIZE_MESSAGE_BUFFER]; 	// buffer unico per le comunicazioni
+int sockfd;	// file descriptor della socket
+int err;	//variabile per controllo di errore
+
+
+int create_socket(int c_port){
+	// creazione della socket
+	int c_sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	// salvo in len lunghezza della struct della socket
+	len = sizeof(servaddr);
+	// controllo d'errore nella creazione della socket
+	if(sockfd == -1){
+		perror("ATTENZIONE! Creazione della socket fallita...");
+	}
+	else{
+		printf("Socket creata correttamente...\n");
+	}
+	// pulisco la memoria allocata per la struttura
+	bzero(&servaddr, sizeof(servaddr));
+	// setto i parametri della struttura
+	servaddr.sin_family=AF_INET;
+	servaddr.sin_addr.s_addr=htonl(INADDR_ANY);
+	//servaddr.sin_addr.s_addr=inet_addr("127.0.0.1");
+	servaddr.sin_port=htons(c_port);
+	// binding della socket con controllo d'errore
+	return c_sockfd;
+}
+
+
+int main() {
+	int fd;
+	//Creo la socket
+	sockfd=socket(AF_INET, SOCK_DGRAM, 0);
+	
+	//Controllo se ci sono stati errori nella creazione della socket
+	if(sockfd == -1) {
+		perror("Socket fallita\n");
+		exit(-1);
+	}
+	else {
+		printf("Socket creata\n");
+	}
+	//Catturo la lunghezza della struct della socket
+	len = sizeof(servaddr);
+
+	
+	/*pulisco la memoria allocata per la struttura
+	La funzione bzero () cancella i dati negli n byte della memoria
+    a partire dalla posizione indicata da s
+	*/
+	bzero(&servaddr, sizeof(len));
+	//Imposto la struct
+	servaddr.sin_family=AF_INET;
+	servaddr.sin_addr.s_addr=inet_addr("127.0.0.1");
+	servaddr.sin_port=htons(PORT);
+	
+	//Mi presento al server
+	sendto(sockfd, buffer, sizeof(buffer), 0, (SA *) &servaddr, len);
+	
+	//Mostro a schermo le possibili scelte
+	printf("Inserisci la stringha inerente ad un comando tra: \n1) exit\n2) list\n3) download \n4) upload\n");
+	
+	//Pulisco buffer
+	bzero(buffer, SIZE_MESSAGE_BUFFER);
+	
+
+	//Ricevo dal server la porta sulla quale connettermi
+	err = recvfrom(sockfd, buffer, sizeof(buffer), 0, (SA *) &servaddr, &len);
+	if (err < 0){
+		perror("Errore nella recvfrom del main del client.");
+	}
+	close(sockfd);
+	
+	//Converto la stringha ricevuta nel buffer in un intero
+	/*
+	atoi converte un stringha nel numero corrispondente
+	*/
+	int port_number =atoi(buffer);
+	printf("\nNUM PORTA DOVE SONO CONNESSO %d\n",port_number);
+	
+	
+	//Controllo se il server ha un numero massimo di client connessi, nel caso positivo riceverò come port_number un codice indicante tale evento
+	if(port_number == PASSWORD2){
+		perror("ATTENZIONE! Impossibile collegarsi al server, limite di connessioni superato.");
+	}
+	//Creo la socket sulla porta passata dal server
+	sockfd = create_socket(port_number);
+	//Ciclo infinito di richieste
+	int i=0;
+	while(1){
+		
+		//Faccio una pulizia preliminare del buffer
+		bzero(buffer, SIZE_MESSAGE_BUFFER);
+
+		//Inserisco nel buffe rla linea di richiesta del client
+		if(i>0){
+		printf("\nInserisci un comando:");
+		}
+		fgets(buffer, SIZE_MESSAGE_BUFFER, stdin);
+		i++;
+		//Verifico se il client vuole uscire o meno dal ciclo
+		
+		if(strncmp("exit", buffer, strlen("exit")) == 0){//Caso di uscita
+			printf("Il client sta chiudendo la connessione...\n");
+			// pulisco il buffer
+			bzero(buffer, SIZE_MESSAGE_BUFFER);
+			// copio la stringa di uscita nel buffer
+			strcpy(buffer, "exit");
+			// invio il messaggio al server per notificargli la chiusura del client
+			err = sendto(sockfd, buffer, sizeof(buffer), 0, (SA *) &servaddr, len);
+			if (err < 0){
+				perror("Errore nell'invio del messaggio di chiusura da parte del client\n");
+			}
+			// chiudo la socket
+			sleep(1);
+			close(sockfd);
+			printf("Client disconnesso.\n");
+			return 0;
+		}
+		
+		//CASO LIST
+		else if (strncmp("list", buffer, strlen("list")) == 0) {
+			//Invio al server cosa voglio fare
+			err = sendto(sockfd, buffer, sizeof(buffer), 0, (SA *) &servaddr, len);
+			/*attesa rispsta del server*//*restituira dentro buffer la lista degliu elementi disponibili*/
+			printf("Lista dei file disponibili nel server:\n%s\n", buffer);
+		}
+		
+		//CASO UPLOAD
+		else if ((strncmp("upload", buffer, strlen("upload"))) == 0) {
+			//Invio al server cosa voglio fare
+			err = sendto(sockfd, buffer, sizeof(buffer), 0, (SA *) &servaddr, len);
+			/*attesa rispsta del server*/
+			printf("Stai effettuando l'upload\n");
+		}
+		
+		//CASO DOWNLOAD
+		else if ((strncmp("download", buffer, strlen("download"))) == 0) {
+			//Invio al server cosa voglio fare
+			err = sendto(sockfd, buffer, sizeof(buffer), 0, (SA *) &servaddr, len);
+			/*attesa rispsta del server*/
+			printf("Stai effettuando il download\n");
+			
+		}
+		
+		//CASO INPUT ERRATO
+		else{
+			printf("INPUT ERRATO! Inserisci un domando valido tra list, upload, download e exit.\n");
+			bzero(buffer, SIZE_MESSAGE_BUFFER);
+		}
+	}
+		return 0;
+}

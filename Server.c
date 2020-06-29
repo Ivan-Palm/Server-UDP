@@ -47,7 +47,7 @@ int create_socket(int s_port){
 	len = sizeof(servaddr);
 	// controllo d'errore nella creazione della socket
 	if(s_sockfd == -1){
-		error("ATTENZIONE! Creazione della socket fallita...");
+		herror("ATTENZIONE! Creazione della socket fallita...");
 	}
 	else{
 		printf("Socket creata correttamente...\n");
@@ -62,7 +62,7 @@ int create_socket(int s_port){
 
 	// binding della socket con controllo d'errore
 	if((bind(s_sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr)))!=0){
-		error("ATTENZIONE! Binding della socket fallito...");
+		herror("ATTENZIONE! Binding della socket fallito...");
 	}
 	else{
 		printf("Socket-Binding eseguito correttamente...\n");
@@ -71,16 +71,16 @@ int create_socket(int s_port){
 }
 
 
-void main(){
+int main(){
 	//inizializzo la sharedmemory per salvare i process-id dei child
 	shmid = shmget(IPC_PRIVATE, sizeof(int)*MAX_CONNECTION, IPC_CREAT|0666);
 	if(shmid == -1){
-		error("Errore nella shmget nel main del server.");
+		herror("Errore nella shmget nel main del server.");
 	}
 	
 	//salvo il pid del processo padre in una variabile globale
 	parent_pid = getpid();
-	
+	//creo la socket di comunicazione
 	s_sockfd = create_socket(PORT);
 	
 	//creo un processo che gestisce l'eventuale richiesta di chiusura del server
@@ -92,10 +92,13 @@ void main(){
 	
 	//entro nel ciclo infinito di accoglienza di richieste
 	while(1){
+		
+		bzero(buffer, SIZE_MESSAGE_BUFFER);
 		//attendo un client
 		if(recvfrom(s_sockfd, buffer, SIZE_MESSAGE_BUFFER, 0, (struct sockaddr *) &servaddr, &len) < 0){
-			error("Errore nella recvfrom nel primo while del server.");
+			herror("Errore nella recvfrom nel primo while del server.");
 		}
+		bzero(buffer, SIZE_MESSAGE_BUFFER);
 		//aumento contatore che segnala i client attivi
 		num_client = num_client + 1;
 		
@@ -108,69 +111,67 @@ void main(){
 			//aggiorno il numero di porta sulla quale fare connettere i client
 			port_number = port_number + 1;
 			//aggiorno numero di porta da passare al client
-			client_port = PORT + port_number;
+			client_port = PORT + port_number;//il primo avra 8091
+			printf("\n------------------------------NUOVO UTENTE CONNESSO!Client port %d------------------------------\n",client_port);
+			bzero(buffer, SIZE_MESSAGE_BUFFER);
 			//scrivo il valore aggionrato nel buffer di comunicazione
-			sprintf(buffer,"NUM PORT:%d",client_port);
+			sprintf(buffer,"%d",client_port);
 			if(sendto(s_sockfd, buffer, SIZE_MESSAGE_BUFFER,0, (struct sockaddr *) &servaddr, len) < 0){
-				error("Errore nella sendto 2 del primo while del main del server.");
+				herror("Errore nella sendto 2 del primo while del main del server.");
 			}
 			bzero(buffer, SIZE_MESSAGE_BUFFER);
 			//creo un child per ogni connessione, esso la gestirà mentre il padre rimarrà in ascolto di nuove eventuali connessioni
 			pid_t pid = fork();
 			if(pid == 0){
+				RESTART_SOCKET:
 				//Creo una nuova socket per questa connessione e chiudo la socket di comunicazione del padre
 				sockfd = create_socket(client_port);
 				close(s_sockfd);
 				//entro nel ciclo di ascolto infinito
 				while(1){
-					// pulisco il buffer
+					printf("\nAttendo messaggio:");
 					bzero(buffer, SIZE_MESSAGE_BUFFER);
+					//aspetto di ricevere un messaggio
 					if(recvfrom(sockfd, buffer, SIZE_MESSAGE_BUFFER, 0, (struct sockaddr *) &servaddr, &len) < 0){
-							error("Errore nella recvfrom del secondo while del main del server.");
+						if (errno==EAGAIN)
+						{
+							goto RESTART_SOCKET;
+						}
+						else{
+							herror("Errore nella recvfrom del secondo while del main del server.");
+						}
 					}
-					
 					/*Gestisco la richiesta del client*/
 					if(strncmp("exit", buffer, strlen("exit")) == 0){
-						sprintf(buffer,"FUNZIONE EXIT");
-						if(sendto(s_sockfd, buffer, SIZE_MESSAGE_BUFFER,0, (struct sockaddr *) &servaddr, len) < 0){
-							error("Errore nella risposta EXIT");
-						}
-						bzero(buffer, SIZE_MESSAGE_BUFFER);
+						printf("Mi ha richiesto exit\n");
+						//func_exit(sockfd,servaddr,len);
 					}
-	
 					else if(strncmp("list", buffer, strlen("list")) == 0){
-						sprintf(buffer,"FUNZIONE LIST");
-						if(sendto(s_sockfd, buffer, SIZE_MESSAGE_BUFFER,0, (struct sockaddr *) &servaddr, len) < 0){
-							error("Errore nella risposta LIST");
-						}
-						bzero(buffer, SIZE_MESSAGE_BUFFER);
+						printf("Mi ha richiesto una list\n");
+						//func_list(sockfd,servaddr,len);
 					}
-	
 					else if(strncmp("download", buffer, strlen("download")) == 0){
-						sprintf(buffer,"FUNZIONE DOWNLOAD");
-						if(sendto(s_sockfd, buffer, SIZE_MESSAGE_BUFFER,0, (struct sockaddr *) &servaddr, len) < 0){
-							error("Errore nella risposta DOWNLOAD");
-						}
-						bzero(buffer, SIZE_MESSAGE_BUFFER);
+						printf("Mi ha richiesto una download\n");
+						//func_download(sockfd,servaddr,len);
+						
+						
 					}	
-	
 					else if(strncmp("upload", buffer, strlen("upload")) == 0){
-						sprintf(buffer,"FUNZIONE UPLOAD");
-						if(sendto(s_sockfd, buffer, SIZE_MESSAGE_BUFFER,0, (struct sockaddr *) &servaddr, len) < 0){
-							error("Errore nella risposta UPLOAD");
-						}
-						bzero(buffer, SIZE_MESSAGE_BUFFER);
+						printf("Mi ha richiesto una upload\n");
+						//func_upload(sockfd,servaddr,len);
+							
 					}
-
 					else{
+						printf("Mi ha richiesto un comando sbagliato\n");
 						sprintf(buffer,"HAI SBAGLIATO");
-					
+						//func_error(sockfd,servaddr,len);
 					}
 				}
-				return;
+				
 			}	
 		}
 	}
+	return 0;
 }
 		
 		
