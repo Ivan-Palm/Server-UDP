@@ -71,10 +71,12 @@ int main() {
 	servaddr.sin_port=htons(PORT);
 	
 	//Mi presento al server
-	sendto(sockfd, buffer, sizeof(buffer), 0, (SA *) &servaddr, len);
+	if(sendto(sockfd, buffer, sizeof(buffer), 0, (SA *) &servaddr, len)==-1){
+		printf("Server offline o non raggiungibile\n");
+		exit(0);
+	}
 	
-	//Mostro a schermo le possibili scelte
-	printf("Inserisci un comando tra: \n1) exit\n2) list\n3) download \n4) upload\n");
+	
 	
 	//Pulisco buffer
 	bzero(buffer, SIZE_MESSAGE_BUFFER);
@@ -93,6 +95,10 @@ int main() {
 	*/
 	sleep(5);
 	int port_number =atoi(buffer);
+	if(port_number==CODICE){
+		printf("Server pieno, riprova più tardi!\n");
+		exit(0);
+	}
 	printf("\nNUM PORTA DOVE SONO CONNESSO %d\n",port_number);
 	
 	
@@ -100,6 +106,8 @@ int main() {
 	if(port_number == CODICE2){
 		perror("ATTENZIONE! Impossibile collegarsi al server, limite di connessioni superato.");
 	}
+	//Mostro a schermo le possibili scelte
+	printf("Inserisci un comando tra: \n1) exit\n2) list\n3) download \n4) upload\n");
 	//Creo la socket sulla porta passata dal server
 	sockfd = create_socket(port_number);
 	//Ciclo infinito di richieste

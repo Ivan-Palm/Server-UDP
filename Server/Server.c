@@ -120,8 +120,8 @@ int main(){
 		num_client = num_client + 1;
 		
 		//verifico se ho superato il range di client ammissibili in tal caso li diminusco
-		if(num_client>=MAX_CONNECTION){
-			printf("Numero massimo di client raggiunto, ne elimino uno\n");
+		if(num_client>MAX_CONNECTION){
+			printf("Numero massimo di client raggiunto!\n");
 			diminusico_client();
 		}
 		else{
@@ -130,7 +130,11 @@ int main(){
 			//aggiorno numero di porta da passare al client
 			client_port = PORT + port_number;//il primo avra 8091 il secondo 8092 e cosi via...
 			int k=0;
-			/*Procedura per la ricerca del numero di porta non utilizzato*/
+			/*Procedura per la ricerca del numero di porta non utilizzato
+			Questa procedura permette di marcare con uno zero i numeri di porta utilizzati
+			Il child ed il parent utilizzeranno delle pagine di memoria condivisa per capire se una porta è libera
+			o no. Nel caso fosse libera viene impostata a 0. (Simile allo scheduler dei processi I/O NRU)
+			*/
 			for(int j=0;j<MAX_CONNECTION;j++){
 				if(*numeri_di_porta[j]!=0){
 					client_port = *numeri_di_porta[j];
@@ -171,7 +175,7 @@ int main(){
 				Entro nella gestione della singola connessione verso un client
 				Creo una nuova socket per questa connessione e chiudo la socket di comunicazione del padre
 				*/
-					signal(SIGINT,(void*)esci);
+				signal(SIGINT,(void*)esci);
 				sockfd = create_socket(client_port);//apro
 				close(s_sockfd);//chiudo
 				/*creo i segnali per la gestione del child*/
@@ -192,7 +196,6 @@ int main(){
 						}
 					}
 					/*Gestisco la richiesta del client*/
-					printf("\nBUFFER %d\n",atoi(buffer));
 					/*Caso exit*/
 					if(strncmp("1", buffer, strlen("1")) == 0){
 						printf("Client port %d -> Richiesto exit\n",client_port);
@@ -337,6 +340,7 @@ Essa provoca una diminuzione del numero di client
 */	
 void *diminusico_client(){
 	num_client = num_client - 1;
+	
 }
 /*
 Questa funzione serve per segnalare al child la chiusura del server
