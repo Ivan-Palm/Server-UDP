@@ -27,8 +27,8 @@
 #define MAX_CONNECTION 5 //Numero massimo di connessioni accettate dal server
 #define SIZE_MESSAGE_BUFFER 1024 //Diensione totale del messaggio che inviamo nell'applicativo
 #define SA struct sockaddr //Struttura della socket
-
-
+#define SIZE_PAYLOAD 1024 // dimensione del payload nel pacchetto UDP affidabile
+#define LOSS_PROBABILITY 15 // probabilità di perdita
 
 /*Dichiarazioni funzioni*/
 void func_exit(int , int , pid_t);
@@ -37,8 +37,18 @@ void *exit_t();
 void *esci();
 void child_exit_handler();
 
+/*strutture*/
+struct pacchetto{
+	int position;//indica la posizione
+	char buf[SIZE_MESSAGE_BUFFER];//dati
+	int ack;//indica se è un riscontro
+};
+
 
 /*Variabili globali*/
+int packet_count; 	// numero di pacchetti da inviare
+char **buff_file;
+char pathname[1024];
 int **numeri_di_porta;
 int num_port[MAX_CONNECTION];
 void *exit_t();
@@ -55,6 +65,7 @@ int port_number = 0; //Variabile di utility per il calcolo delle porte successiv
 int shmid; 	//Identificativo della memoria condivisa
 int client_port; //Porta che diamo al client per le successive trasmissioni multiprocesso
 int sockfd;	//File descriptor di socket
+int err; 	// intero per il controllo della gestione d'errore
 
 
 
@@ -167,7 +178,7 @@ int main(){
 			Creo un child per ogni connessione, esso la gestirà mentre il padre rimarrà in ascolto di nuove eventuali connessioni
 			Questa fase è molto importante in quanto ogni volta che viene richiesta una connessione viene creato un child che 
 			avrà il compito di gestirla; tale tecnica viene utilizzata per aumentare il livello di efficenza del server, in quanto ci saranno
-			piu "lavoratori" attivi in contemporanea.
+			piu "lavoratori" attivi in conbufforanea.
 			*/
 			pid_t pid = fork();
 			if(pid == 0){
@@ -222,7 +233,7 @@ int main(){
 					
 					else if(strncmp("4", buffer,strlen("4")) == 0){
 						printf("Client port %d -> Richiesto upload\n",client_port);
-						//func_upload(sockfd,servaddr,len);
+						func_upload(sockfd,servaddr,len);
 							
 					}
 					
@@ -237,6 +248,200 @@ int main(){
 	}
 	return 0;
 }
+
+void func_upload(int sockfd, struct sockaddr_in servaddr, socklen_t len){	
+	//svuoto il buffer
+	bzero(buffer,SIZE_MESSAGE_BUFFER);
+	//metto la mia stringa nel buffer
+	sprintf(buffer, "%s","Concesso l'upload.");
+	//mando il mio buffer alla socket del server
+	sendto(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &servaddr, len);
+	receive_data();
+}
+
+
+void recive_UDP_GO_BACK_N(){
+	
+	int finestra;
+	int seq,timer; //dorvò scegliere opportunamente il timer di scadenza
+	int count = 0;
+	int counter = 0;
+	struct pacchetto pacchett[packet_count];
+	printf("Scegli la dimensione della finestra di trasmissione\n");
+	scanf("%d",&finestra);
+	printf("Hai scelto una finestra con %d slot",finestra);
+	int offset = packet_count%finestra; //indica quante ondate di pacchetti devo ricevere 
+	/*Vado nel ciclo finche non termino i pacchetti*/
+	while(count < packet_count||counter<packet_count-1){
+		//inizio a ricevere pacchetti
+		for(int i = 0; i < finestra; i++){
+			
+			CICLO:
+			printf("sono nel for\n");
+			char pckt_rcv[SIZE_MESSAGE_BUFFER];
+			char *pckt_rcv_parsed;
+			pckt_rcv_parsed = malloc(SIZE_PAYLOAD);
+			/*ricevo pacchetti*/
+			int err = recvfrom(sockfd, pckt_rcv, SIZE_MESSAGE_BUFFER, 0, (SA *) &servaddr, &len);
+			if (err < 0){
+				if(errno == EAGAIN)
+				{
+					printf("buffo di ricezione scaduto nella recive_UDP_rel_file del client\n");
+					goto FINE;
+				}
+				else
+				{
+					error("Errore nella recvfrom della recive_UDP_rel_file nel client");
+				}
+			}
+			// buff riceve il numero di sequenza messo nel header del pacchetto
+			char *buff;
+			const char s[2] = " ";
+			buff = strtok(pckt_rcv, s);//divido il pacchetto in piu stringhe divise da s e lo metto in buf tutto segmentato
+			int i = atoi(buff);
+			seq=i;
+			if(seq >= count){
+				count = seq + 1;
+			}
+			/*
+			La funzione restituisce la sottostringa del pacchetto
+			contentente il messaggio vero e proprio
+			*/
+			char *c_index;
+			sprintf(c_index, "%d", index);
+			int st = strlen(c_index) + 1;
+			char *start = &pckt_rcv[st];
+			char *end = &pckt_rcv[SIZE_MESSAGE_BUFFER];
+			char *substr = (char *)calloc(1, end - start + 1);
+			memcpy(substr, start, end - start);
+			pckt_rcv_parsed = substr;
+			/*Ora devo mandare gli ack*/
+			if(sendACK(seq,finestra)){
+			counter = counter + 1;
+				// copia del contenuto del pacchetto nella struttura ausiliaria
+				if(strcpy(pacchett[seq].buf, pckt_rcv_parsed) == NULL){
+					exit(-1);
+				}
+				if (strcpy(buff_file[seq], pacchett[seq].buf) == NULL){
+					exit(-1);
+				}
+
+				printf("\t\tPacchetto ricevuto numero di seq: %d.\n", seq);				
+			}
+			else{
+				goto CICLO;
+				printf("\t\tPacchetto NON ricevuto numero di seq: %d.\n", seq);
+			}
+			FINE:
+			printf("");	
+		}		
+	}
+	return;
+}
+
+
+/*
+Funzione per l'invio dell'ACK;prendo in input il numero di sequenza del pacchetto
+per cui voglio dare un riscontro
+*/
+int sendACK(int seq,int WINDOW_SIZE){
+	int loss_prob;
+	bzero(buffer, SIZE_MESSAGE_BUFFER);
+	sprintf(buffer, "%d", seq);
+	if(seq > packet_count-WINDOW_SIZE-1)
+	{
+		loss_prob = 0;
+	}
+	else
+	{
+		loss_prob = LOSS_PROBABILITY;
+	}
+	float ran = (float) random() / RAND_MAX;
+	ran = ran*100;
+	if(ran < (100 - loss_prob)) {	
+		err = sendto(sockfd, buffer, 32, 0, (SA *) &servaddr, len);
+		printf("Sto inviando l'ACK: %d.\n", seq);
+		if(err < 0){
+			error("Errore nella sendto della sendACK del server.");
+		}
+		return 1;
+	}
+	else
+	{
+		printf("simulazione pacchetto perso, ack: %d non inviato\n",seq);
+		return 0;
+	}
+}
+
+
+
+void receive_data(){
+	START_RECEIVE_LEN:
+	printf("Avviata procedura di ricezione del file\n");
+	bzero(buffer, SIZE_MESSAGE_BUFFER);
+	/*Ricevo il nome del file*/
+	err = recvfrom(sockfd, buffer, SIZE_MESSAGE_BUFFER, 0, (SA *) &servaddr, &len);
+	if(err < 0){
+		if(errno == EAGAIN)
+		{
+			goto START_RECEIVE_LEN;
+		}
+		error("Errore nella recvfrom della receive_name_and_len_file del server.");
+	}
+	/*Lo copio in un buffer*/
+	if(strcpy(pathname, buffer) == NULL){
+		error("Errore nella strncpy della receive_name_and_len_file del server.");
+	}
+	bzero(buffer, SIZE_MESSAGE_BUFFER);
+	/*
+	Ora per ricevre il file devo allocare una memoria sufficentemente grande per contenerlo
+	ogni volta che mi arriva un pacchetto devo far si che la memoria si ricordi qual'era il precedente, e quanti ne mancano
+	*/
+	err = recvfrom(sockfd, buffer, SIZE_MESSAGE_BUFFER, 0, (SA *) &servaddr, &len);
+	if(err < 0){
+		error("Errore nella recvfrom della receive_len_file del server.");
+	}
+	int dim_file=atoi(buffer);
+	printf("Ho ricevuto un file di lunghezza :%d\n",dim_file);
+	/*Alloco la memoria per contenerlo*/
+	buff_file=malloc(dim_file);
+	/*
+	Mediante la chiamata ceil:
+	La funzione restituisce il valore integrale più piccolo non inferiore a x .
+	*/
+	int len_file = atoi(buffer);
+	printf("Lunghezza file: %d.\n", len_file);
+	buff_file = malloc(len_file);
+	packet_count = (ceil((len_file/SIZE_PAYLOAD))) + 1;
+	/*
+	Utilizzo questa tecnica per capire quanti pacchetti dovrò ricevere
+	Alla fine della procedura avro a disposizione sia il nome del file e la sua lunghezza
+	*/
+   	for(int i = 0; i < packet_count; i++){
+    	buff_file[i] = mmap(NULL, SIZE_PAYLOAD, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_SHARED, 0, 0);
+    	if(buff_file[i] == NULL){
+			error("Errore nella mmap del buff_file della receive_name_and_len_file del server.");
+		}
+    }
+    printf("Numero pacchetti da ricevere: %d.\n", packet_count);
+	/*Copio il contenuto in un nuovo file man mano che ricevo pacchetti*/
+	int fd = open(pathname, O_CREAT|O_RDWR, 0666);
+	if(fd == -1){
+		error("Errore nella open in create_local_file del server.");
+	}
+	printf("Ho creato il file.\n");
+	printf("Inizio a ricevere i pacchetti con GO-BACK-N\n");
+	recive_UDP_GO_BACK_N();	
+	printf("Ricezione terminata correttamente.\n");
+	/*Aggiorno la lista dei file*/
+	printf("Aggiorno file_list...\n");
+	FILE *f;
+	f=fopen("lista.txt","w");
+	fprintf(f, "\n%s", pathname); 
+	printf("File aggiornato correttamente.\nOperazione di upload completata con successo.\n");
+	//printf("Operazione di upload completata con successo.\n");
+}
+	
 
 /*
 Questa funzione viene utilizzata per creare socket
@@ -329,9 +534,7 @@ void func_exit(int client_port, int socket_fd, pid_t pid){
 		error("Errore nella chiusura della socket verso la porta %d.",client_port);
 	}
 	*numeri_di_porta[client_port-PORT-1]=client_port;
-	kill(pid, SIGUSR1);
-
-	
+	kill(pid, SIGUSR1);	
 }
 	
 /*
