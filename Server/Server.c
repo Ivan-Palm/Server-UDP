@@ -20,30 +20,34 @@
 #include <errno.h>
 
 
-#define PORT 8090 // porta di default per l'inizio delle conversazioni client-server
+#define PORT 8090 //Porta di default per l'inizio delle conversazioni client-server
 #define MAXLINE 1024
-#define MAX_CONNECTION 5 // numero massimo di connessioni accettate dal server
-#define SIZE_MESSAGE_BUFFER 1024 // diensione totale del messaggio che inviamo nell'applicativo
-#define SA struct sockaddr // struttura della socket
+#define MAX_CONNECTION 5 //Numero massimo di connessioni accettate dal server
+#define SIZE_MESSAGE_BUFFER 1024 //Diensione totale del messaggio che inviamo nell'applicativo
+#define SA struct sockaddr //Struttura della socket
 
 void func_exit(int , int , pid_t );
 void func_list(int, struct sockaddr_in, socklen_t);
 
-char *buff_file_list; 	// buffer per il contenuto della lista di file
-char buffer[SIZE_MESSAGE_BUFFER]; 	// buffer unico per le comunicazioni
-int s_sockfd;	// file descriptor della socket usata dai processi figli
-pid_t parent_pid; 	// pid del primo processo padre nel main
-int num_client=0;
-int size; 	// dimensione del file da trasferire
-struct sockaddr_in servaddr;	// struct di supporto della socket
-socklen_t len;	// lunghezza della struct della socket
-int port_number = 0; 	// variabile di utility per il calcolo delle porte successive da dare al client
-int shmid; 	// identificativo della memoria condivisa
-int client_port; 	// porta che diamo al client per le successive trasmissioni multiprocesso
-int sockfd;	// file descriptor di socket
+char *buff_file_list; //Buffer per il contenuto della lista di file
+char buffer[SIZE_MESSAGE_BUFFER]; //Buffer per comunicare con i client
+int s_sockfd;//File descriptor della socket per i child
+pid_t parent_pid; //PID del parent nel main
+int num_client=0;//Numero dei client, inizialmente impostato a 0
+int size; //Dimensione del file da trasferire
+struct sockaddr_in servaddr;//Struct di supporto della socket
+socklen_t len;//Lunghezza della struct della socket
+int port_number = 0; //Variabile di utility per il calcolo delle porte successive da dare al client
+int shmid; 	//Identificativo della memoria condivisa
+int client_port; //Porta che diamo al client per le successive trasmissioni multiprocesso
+int sockfd;	//File descriptor di socket
 
 
-
+/*
+Questa funzione veien utilizzata per creare socket
+Viene creata una socket e la struct di supporto
+Viene ritornata la socket
+*/
 int create_socket(int s_port){
 	// creazione della socket
 	int s_sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -74,8 +78,34 @@ int create_socket(int s_port){
 	return s_sockfd;
 }
 
+/*
+Questa funzione serve per segnalare al child la chiusura del server
+Viene copiata nella socket un messaggio speciale che indica tale evento
+Per ogni client connesso "se ci sono" mando tale segnale
+Esco con un codice di terminazione 1 := good finish
+*/
+void child_exit_handler(){
+	printf("Socket: %d. in chiusura\n", sockfd);
+	bzero(buffer, SIZE_MESSAGE_BUFFER);
+	sprintf(buffer, "%d", PASSWORD);
+	// se ci sono client connessi notifico a loro la chiusura del server
+	if(num_client >0){
+		if(sendto(sockfd, buffer, SIZE_MESSAGE_BUFFER, 0, (struct sockaddr *) &servaddr, len) < 0){ 
+			error("Errore invio segnale di chiusura della socket al child.");
+		}
+	}
+	close(sockfd);
+	exit(1);
+}
+
+void *exit_t(){
+	exit(1);
+}
 
 int main(){
+	//imposto i segnali
+	signal(SIGCHLD,exit_t);
+	signal(SIGUSR1, (void*)diminusico_client);
 	//inizializzo la sharedmemory per salvare i process-id dei child
 	shmid = shmget(IPC_PRIVATE, sizeof(int)*MAX_CONNECTION, IPC_CREAT|0666);
 	if(shmid == -1){
@@ -96,7 +126,6 @@ int main(){
 	
 	//entro nel ciclo infinito di accoglienza di richieste
 	while(1){
-		
 		bzero(buffer, SIZE_MESSAGE_BUFFER);
 		//attendo un client
 		if(recvfrom(s_sockfd, buffer, SIZE_MESSAGE_BUFFER, 0, (struct sockaddr *) &servaddr, &len) < 0){
@@ -106,45 +135,59 @@ int main(){
 		//aumento contatore che segnala i client attivi
 		num_client = num_client + 1;
 		
-		//verifico se ho superato il range di client ammissibili
+		//verifico se ho superato il range di client ammissibili in tal caso li diminusco
 		if(num_client>=MAX_CONNECTION){
 			printf("Numero massimo di client raggiunto, ne elimino uno\n");
-			num_client-=1;
+			diminusico_client();
 		}
 		else{
 			//aggiorno il numero di porta sulla quale fare connettere i client
 			port_number = port_number + 1;
 			//aggiorno numero di porta da passare al client
-			client_port = PORT + port_number;//il primo avra 8091
+			client_port = PORT + port_number;//il primo avra 8091 il secondo 8092 e cosi via...
 			printf("\n------------------------------NUOVO UTENTE CONNESSO!Client port %d------------------------------\n",client_port);
 			bzero(buffer, SIZE_MESSAGE_BUFFER);
 			//scrivo il valore aggionrato nel buffer di comunicazione
 			sprintf(buffer,"%d",client_port);
+			//comunico al client su quale porta si sta connettendo
 			if(sendto(s_sockfd, buffer, SIZE_MESSAGE_BUFFER,0, (struct sockaddr *) &servaddr, len) < 0){
 				herror("Errore nella sendto 2 del primo while del main del server.");
 			}
 			bzero(buffer, SIZE_MESSAGE_BUFFER);
-			//creo un child per ogni connessione, esso la gestirà mentre il padre rimarrà in ascolto di nuove eventuali connessioni
+			/*
+			Creo un child per ogni connessione, esso la gestirà mentre il padre rimarrà in ascolto di nuove eventuali connessioni
+			Questa fase è molto importante in quanto ogni volta che viene richiesta una connessione viene creato un child che 
+			avrà il compito di gestirla; tale tecnica viene utilizzata per aumentare il livello di efficenza del server, in quanto ci saranno
+			piu "lavoratori" attivi in contemporanea.
+			*/
 			pid_t pid = fork();
 			if(pid == 0){
-				RESTART_SOCKET:
-				//Creo una nuova socket per questa connessione e chiudo la socket di comunicazione del padre
-				sockfd = create_socket(client_port);
-				close(s_sockfd);
-				//entro nel ciclo di ascolto infinito
+				/*
+				Entro nella gestione della singola connessione verso un client
+				Creo una nuova socket per questa connessione e chiudo la socket di comunicazione del padre
+				*/
+				sockfd = create_socket(client_port);//apro
+				close(s_sockfd);//chiudo
+				/*creo i segnali per la gestione del child*/
+				signal(SIGCHLD, SIG_IGN);
+				signal(SIGUSR1, SIG_IGN);
+				signal(SIGUSR2, child_exit_handler);//Gestione della chiusira del server, manda un messaggio di chiusura verso il client
+				/*Entro nel ciclo di ascolto infinito*/
 				while(1){
-					bzero(buffer, SIZE_MESSAGE_BUFFER);
-					//aspetto di ricevere un messaggio
+					bzero(buffer, SIZE_MESSAGE_BUFFER);//Pulisco il buffer
+					/*Vado in attesa di un messaggio*/
 					if(recvfrom(sockfd, buffer, SIZE_MESSAGE_BUFFER, 0, (struct sockaddr *) &servaddr, &len) < 0){
 						if (errno==EAGAIN)
 						{
-							goto RESTART_SOCKET;
+							return;
 						}
 						else{
 							herror("Errore nella recvfrom del secondo while del main del server.");
 						}
 					}
 					/*Gestisco la richiesta del client*/
+					
+					/*Caso exit*/
 					if(strncmp("exit", buffer, strlen("exit")) == 0){
 						printf("Client port %d -> Richiesto exit\n",client_port);
 						func_exit(client_port,sockfd,parent_pid);
@@ -152,21 +195,29 @@ int main(){
 							sleep(1000);
 						}
 					}
+					
+					/*Caso list*/
 					else if(strncmp("list", buffer, strlen("list")) == 0){
 						printf("Client port %d -> Richiesto list\n",client_port);
 						func_list(sockfd,servaddr,len);
 					}
+					
+					/*Caso download*/
 					else if(strncmp("download", buffer, strlen("download")) == 0){
 						printf("Client port %d -> Richiesto download\n",client_port);
 						//func_download(sockfd,servaddr,len);
 						
 						
 					}	
+					/*Caso upload*/
+					
 					else if(strncmp("upload", buffer, strlen("upload")) == 0){
 						printf("Client port %d -> Richiesto upload\n",client_port);
 						//func_upload(sockfd,servaddr,len);
 							
 					}
+					
+					/*Caso errore*/
 					else{
 						//func_error(sockfd,servaddr,len);
 					}
@@ -178,6 +229,15 @@ int main(){
 	return 0;
 }
 
+
+/*
+Questa funzione viene utilizzata quando il client richiede la lista dei file salavti in memoria
+Viene aperto un canale di comunicazione di sola lettura verso il file
+Vine effettuata una scansione mediante l'indice di lettura e scrittura che mi restituirà la grandezza specifica del file
+Poi viene allocata una quantità di memoria sufficente a contenere l'intero contenuto del file
+Viene copiato il contenuto del file in tale memoria
+Viene passato l'informazione alla socket verso il client contenente la lista dei file
+*/
 void func_list(int sockfd, struct sockaddr_in servaddr, socklen_t len){
 	int ret;
 	int fd; //Puntatore al file contenente la lista dei file
@@ -212,6 +272,12 @@ void func_list(int sockfd, struct sockaddr_in servaddr, socklen_t len){
 	free(buff_file_list);//dealloco la memoria allocata precedentemente con la malloc
 }
 
+
+/*
+Questa funzione viene utilizzata quando il child decide di uscire
+Il server prende come dati il pid e la client_port inerente al client connesso
+Medianti questi dati lancia un segnale di kill verso quel process ID e chiude la socket
+*/
 void func_exit(int client_port, int socket_fd, pid_t pid){
 	printf("Chiudo la connessione verso la porta: %d.\n", client_port);
 	int ret = close(socket_fd);
@@ -221,5 +287,11 @@ void func_exit(int client_port, int socket_fd, pid_t pid){
 	kill(pid, SIGUSR1);
 }
 	
-		
+/*
+Questa funzione viene invocata quando il numero massimo di client si trova connesso
+Essa provoca una diminuzione del numero di client
+*/	
+void *diminusico_client(){
+	num_client = num_client - 1;
+}
 		

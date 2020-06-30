@@ -17,24 +17,28 @@
 #include <pthread.h>
 
 
-#define PORT 8090 // porta di default per l'inizio delle conversazioni client-server
-#define SIZE_MESSAGE_BUFFER 1064 // dimensione totale del messaggio che inviamo nell'applicativo
-#define SA struct sockaddr // struttura della socket
-#define PASSWORD 11031992 // pw di utility per gestire la chiusura del server
-#define PASSWORD2 14031995 // pw di utility per gestire l'impossibilità di aggiungere un client
+#define PORT 8090 //Porta di default per l'inizio delle conversazioni client-server
+#define SIZE_MESSAGE_BUFFER 1064 //Dimensione totale del messaggio che inviamo nell'applicativo
+#define SA struct sockaddr //Struttura della socket
+#define CODICE 25463 //Codice di utility per gestire la chiusura del server
+#define CODICE2 54654 //Codice di utility per gestire l'impossibilità di aggiungere un client
 
 void func_list(int, struct sockaddr_in, socklen_t);
 
 
-struct timeval t;	//struttura per calcolare il tempo trascorso
-struct sockaddr_in servaddr;	// struct di supporto della socket
-socklen_t len;	// lunghezza della struct della socket
-char file_name[128];	// buffer per salvare il nome del file
-char buffer[SIZE_MESSAGE_BUFFER]; 	// buffer unico per le comunicazioni
-int sockfd;	// file descriptor della socket
-int err;	//variabile per controllo di errore
+struct timeval t;//Struttura per calcolare il tempo trascorso
+struct sockaddr_in servaddr;// struct di supporto della socket
+socklen_t len;//Lunghezza della struct della socket
+char file_name[128];	//Buffer per salvare il nome del file
+char buffer[SIZE_MESSAGE_BUFFER]; 	//Buffer unico per le comunicazioni
+int sockfd;	//File descriptor della socket
+int err;//Variabile per controllo di errore
 
-
+/*
+Questa funzione veien utilizzata per creare socket
+Viene creata una socket e la struct di supporto
+Viene ritornata la socket
+*/
 int create_socket(int c_port){
 	// creazione della socket
 	int c_sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -76,7 +80,8 @@ int main() {
 	len = sizeof(servaddr);
 
 	
-	/*pulisco la memoria allocata per la struttura
+	/*
+	Pulisco la memoria allocata per la struttura
 	La funzione bzero () cancella i dati negli n byte della memoria
     a partire dalla posizione indicata da s
 	*/
@@ -103,16 +108,16 @@ int main() {
 	}
 	close(sockfd);
 	
-	//Converto la stringha ricevuta nel buffer in un intero
 	/*
-	atoi converte un stringha nel numero corrispondente
+	Converto la stringha ricevuta nel buffer in un intero
+	atoi(char*) converte un stringha nel numero corrispondente
 	*/
 	int port_number =atoi(buffer);
 	printf("\nNUM PORTA DOVE SONO CONNESSO %d\n",port_number);
 	
 	
 	//Controllo se il server ha un numero massimo di client connessi, nel caso positivo riceverò come port_number un codice indicante tale evento
-	if(port_number == PASSWORD2){
+	if(port_number == CODICE2){
 		perror("ATTENZIONE! Impossibile collegarsi al server, limite di connessioni superato.");
 	}
 	//Creo la socket sulla porta passata dal server
@@ -177,6 +182,12 @@ int main() {
 		return 0;
 }
 
+
+/*
+Questa funzione viene utilizzata per richiedere una lista di file al server
+Vado in attesa di ricevere questa lista dal client mediante la socket
+Stampo la lista su stdout
+*/
 void func_list(int sockfd, struct sockaddr_in servaddr, socklen_t len){
 	//Invio al server cosa voglio fare
 	err = sendto(sockfd, buffer, sizeof(buffer), 0, (SA *) &servaddr, len);
