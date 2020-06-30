@@ -22,10 +22,13 @@
 
 #define PORT 8090 //Porta di default per l'inizio delle conversazioni client-server
 #define MAXLINE 1024
+#define CODICE 11031992 // pw di utility per gestire la chiusura del server
 #define MAX_CONNECTION 5 //Numero massimo di connessioni accettate dal server
 #define SIZE_MESSAGE_BUFFER 1024 //Diensione totale del messaggio che inviamo nell'applicativo
 #define SA struct sockaddr //Struttura della socket
 
+void *exit_t();
+void *diminusico_client();
 void func_exit(int , int , pid_t );
 void func_list(int, struct sockaddr_in, socklen_t);
 
@@ -87,11 +90,11 @@ Esco con un codice di terminazione 1 := good finish
 void child_exit_handler(){
 	printf("Socket: %d. in chiusura\n", sockfd);
 	bzero(buffer, SIZE_MESSAGE_BUFFER);
-	sprintf(buffer, "%d", PASSWORD);
+	sprintf(buffer, "%d", CODICE);
 	// se ci sono client connessi notifico a loro la chiusura del server
 	if(num_client >0){
 		if(sendto(sockfd, buffer, SIZE_MESSAGE_BUFFER, 0, (struct sockaddr *) &servaddr, len) < 0){ 
-			error("Errore invio segnale di chiusura della socket al child.");
+			herror("Errore invio segnale di chiusura della socket al child.");
 		}
 	}
 	close(sockfd);
@@ -104,7 +107,7 @@ void *exit_t(){
 
 int main(){
 	//imposto i segnali
-	signal(SIGCHLD,exit_t);
+	signal(SIGCHLD,(void*)exit_t);
 	signal(SIGUSR1, (void*)diminusico_client);
 	//inizializzo la sharedmemory per salvare i process-id dei child
 	shmid = shmget(IPC_PRIVATE, sizeof(int)*MAX_CONNECTION, IPC_CREAT|0666);
@@ -142,7 +145,7 @@ int main(){
 		}
 		else{
 			//aggiorno il numero di porta sulla quale fare connettere i client
-			port_number = port_number + 1;
+			port_number = ((port_number )%(MAX_CONNECTION))+1;
 			//aggiorno numero di porta da passare al client
 			client_port = PORT + port_number;//il primo avra 8091 il secondo 8092 e cosi via...
 			printf("\n------------------------------NUOVO UTENTE CONNESSO!Client port %d------------------------------\n",client_port);
@@ -179,7 +182,7 @@ int main(){
 					if(recvfrom(sockfd, buffer, SIZE_MESSAGE_BUFFER, 0, (struct sockaddr *) &servaddr, &len) < 0){
 						if (errno==EAGAIN)
 						{
-							return;
+							return 0;
 						}
 						else{
 							herror("Errore nella recvfrom del secondo while del main del server.");
