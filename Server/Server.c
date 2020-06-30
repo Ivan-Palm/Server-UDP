@@ -20,18 +20,29 @@
 #include <errno.h>
 
 
+/*Valori definiti preliminarmente*/
 #define PORT 8090 //Porta di default per l'inizio delle conversazioni client-server
 #define MAXLINE 1024
-#define CODICE 11031992 // pw di utility per gestire la chiusura del server
+#define CODICE 25463 //Codice di utility per gestire la chiusura del server
 #define MAX_CONNECTION 5 //Numero massimo di connessioni accettate dal server
 #define SIZE_MESSAGE_BUFFER 1024 //Diensione totale del messaggio che inviamo nell'applicativo
 #define SA struct sockaddr //Struttura della socket
+
+
+
+/*Dichiarazioni funzioni*/
+void func_exit(int , int , pid_t);
+void func_list(int, struct sockaddr_in, socklen_t);
+void *exit_t();
+void *esci();
+void child_exit_handler();
+
+
+/*Variabili globali*/
+int **numeri_di_porta;
 int num_port[MAX_CONNECTION];
 void *exit_t();
 void *diminusico_client();
-void func_exit(int , int , pid_t);
-void func_list(int, struct sockaddr_in, socklen_t);
-
 char *buff_file_list; //Buffer per il contenuto della lista di file
 char buffer[SIZE_MESSAGE_BUFFER]; //Buffer per comunicare con i client
 int s_sockfd;//File descriptor della socket per i child
@@ -46,86 +57,43 @@ int client_port; //Porta che diamo al client per le successive trasmissioni mult
 int sockfd;	//File descriptor di socket
 
 
-/*
-Questa funzione veien utilizzata per creare socket
-Viene creata una socket e la struct di supporto
-Viene ritornata la socket
-*/
-int create_socket(int s_port){
-	// creazione della socket
-	int s_sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	// salvo in len la lunghezza della struct della socket
-	len = sizeof(servaddr);
-	// controllo d'errore nella creazione della socket
-	if(s_sockfd == -1){
-		herror("ATTENZIONE! Creazione della socket fallita...");
-	}
-	else{
-		printf("Socket creata\n");
-	}
-	// pulisco la memoria allocata per la struttura della socket
-	bzero(&servaddr,sizeof(servaddr));
-	// setto i parametri della struttura della socket
-	servaddr.sin_family=AF_INET;
-	servaddr.sin_addr.s_addr=htonl(INADDR_ANY);
-	//servaddr.sin_addr.s_addr=inet_addr("127.0.0.1");
-	servaddr.sin_port=htons(s_port);
 
-	// binding della socket con controllo d'errore
-	if((bind(s_sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr)))!=0){
-		herror("ATTENZIONE! Binding della socket fallito...");
-	}
-	else{
-		printf("Socket-Binding eseguito\n");
-	}
-	return s_sockfd;
-}
 
-/*
-Questa funzione serve per segnalare al child la chiusura del server
-Viene copiata nella socket un messaggio speciale che indica tale evento
-Per ogni client connesso "se ci sono" mando tale segnale
-Esco con un codice di terminazione 1 := good finish
-*/
-void child_exit_handler(){
-	printf("Socket: %d. in chiusura\n", sockfd);
-	bzero(buffer, SIZE_MESSAGE_BUFFER);
-	sprintf(buffer, "%d", CODICE);
-	// se ci sono client connessi notifico a loro la chiusura del server
-	if(num_client >0){
-		if(sendto(sockfd, buffer, SIZE_MESSAGE_BUFFER, 0, (struct sockaddr *) &servaddr, len) < 0){ 
-			herror("Errore invio segnale di chiusura della socket al child.");
-		}
-	}
-	close(sockfd);
-	exit(1);
-}
-
-void *exit_t(){
-	exit(1);
-}
 
 int main(){
-	
+
 	//imposto i segnali
 	signal(SIGCHLD,(void*)exit_t);
 	signal(SIGUSR1, (void*)diminusico_client);
 	
-	
+	/*Creo un array di interi accessibile da piu processi, col fine di capire quale porte sono libere o meno*/
+	numeri_di_porta=malloc((MAX_CONNECTION*sizeof(int*)));
+	if(numeri_di_porta==NULL){
+		printf("Problema creazione array contenente i numeri di porta\n");
+		exit(-1);
+	}
+	for(int k=0;k<MAX_CONNECTION;k++){
+		numeri_di_porta[k]=mmap(NULL,4096,PROT_READ|PROT_WRITE,MAP_ANONYMOUS|MAP_SHARED,0,0);
+		if (numeri_di_porta[k] == NULL){
+			printf("mmap error\n");
+			exit(-1);
+		}
+	}
 	for(int i=0;i<MAX_CONNECTION;i++){
-		num_port[i]=i+1+PORT;
+		*numeri_di_porta[i]=i+1+PORT;
 	}
-	printf("Porte disponibili:\n");
+	printf("\n-------------------------Porte disponibili:-------------------------\n");
 	for(int l=0;l<MAX_CONNECTION;l++){
-			printf("[%d]\n",num_port[l]);
+			printf("\t\t\t\t[%d]\n",*numeri_di_porta[l]);
 	}
-	//inizializzo la sharedmemory per salvare i process-id dei child
+	
+	/*Inizializzo la sharedmemory per salvare i process-id dei child*/
 	shmid = shmget(IPC_PRIVATE, sizeof(int)*MAX_CONNECTION, IPC_CREAT|0666);
 	if(shmid == -1){
 		herror("Errore nella shmget nel main del server.");
 	}
 	
-	//salvo il pid del processo padre in una variabile globale
+	/*Salvo il pid del processo padre in una variabile globale*/
 	parent_pid = getpid();
 	//creo la socket di comunicazione
 	s_sockfd = create_socket(PORT);
@@ -140,14 +108,13 @@ int main(){
 	//entro nel ciclo infinito di accoglienza di richieste
 	while(1){
 		bzero(buffer, SIZE_MESSAGE_BUFFER);
-		
+		signal(SIGINT,(void*)esci);
 		
 		//attendo un client
 		if(recvfrom(s_sockfd, buffer, SIZE_MESSAGE_BUFFER, 0, (struct sockaddr *) &servaddr, &len) < 0){
 			herror("Errore nella recvfrom nel primo while del server.");
 		}
-		sleep(5);
-
+		
 		bzero(buffer, SIZE_MESSAGE_BUFFER);
 		//aumento contatore che segnala i client attivi
 		num_client = num_client + 1;
@@ -163,10 +130,11 @@ int main(){
 			//aggiorno numero di porta da passare al client
 			client_port = PORT + port_number;//il primo avra 8091 il secondo 8092 e cosi via...
 			int k=0;
+			/*Procedura per la ricerca del numero di porta non utilizzato*/
 			for(int j=0;j<MAX_CONNECTION;j++){
-				if(num_port[j]!=0){
-					client_port = num_port[j];
-					num_port[j]=0;
+				if(*numeri_di_porta[j]!=0){
+					client_port = *numeri_di_porta[j];
+					*numeri_di_porta[j]=0;
 					break;
 				}
 				else{
@@ -177,6 +145,10 @@ int main(){
 			{
 				printf("Non ho porte libere\n");
 				//invio sengale al client
+			}
+			printf("\n-------------------------Porte disponibili:-------------------------\n");
+			for(int l=0;l<MAX_CONNECTION;l++){
+				printf("\t\t\t\t[%d]\n",*numeri_di_porta[l]);
 			}
 			printf("\n------------------------------NUOVO UTENTE CONNESSO!Client port %d------------------------------\n",client_port);
 			bzero(buffer, SIZE_MESSAGE_BUFFER);
@@ -199,6 +171,7 @@ int main(){
 				Entro nella gestione della singola connessione verso un client
 				Creo una nuova socket per questa connessione e chiudo la socket di comunicazione del padre
 				*/
+					signal(SIGINT,(void*)esci);
 				sockfd = create_socket(client_port);//apro
 				close(s_sockfd);//chiudo
 				/*creo i segnali per la gestione del child*/
@@ -262,6 +235,41 @@ int main(){
 	return 0;
 }
 
+/*
+Questa funzione viene utilizzata per creare socket
+Viene creata una socket e la struct di supporto
+Viene ritornata la socket
+*/
+int create_socket(int s_port){
+	printf("Creazione socket:\n");
+	// creazione della socket
+	int s_sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	// salvo in len la lunghezza della struct della socket
+	len = sizeof(servaddr);
+	// controllo d'errore nella creazione della socket
+	if(s_sockfd == -1){
+		herror("ATTENZIONE! Creazione della socket fallita...");
+	}
+	else{
+		printf("Socket creata\n");
+	}
+	// pulisco la memoria allocata per la struttura della socket
+	bzero(&servaddr,sizeof(servaddr));
+	// setto i parametri della struttura della socket
+	servaddr.sin_family=AF_INET;
+	servaddr.sin_addr.s_addr=htonl(INADDR_ANY);
+	//servaddr.sin_addr.s_addr=inet_addr("127.0.0.1");
+	servaddr.sin_port=htons(s_port);
+
+	// binding della socket con controllo d'errore
+	if((bind(s_sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr)))!=0){
+		herror("ATTENZIONE! Binding della socket fallito...");
+	}
+	else{
+		printf("Socket-Binding eseguito\n");
+	}
+	return s_sockfd;
+}
 
 /*
 Questa funzione viene utilizzata quando il client richiede la lista dei file salavti in memoria
@@ -315,9 +323,11 @@ void func_exit(int client_port, int socket_fd, pid_t pid){
 	printf("Chiudo la connessione verso la porta: %d.\n", client_port);
 	int ret = close(socket_fd);
 	if(ret == -1){
-		error("Errore nella chiusura della socket verso la porta.",client_port);
+		error("Errore nella chiusura della socket verso la porta %d.",client_port);
 	}
+	*numeri_di_porta[client_port-PORT-1]=client_port;
 	kill(pid, SIGUSR1);
+
 	
 }
 	
@@ -328,4 +338,35 @@ Essa provoca una diminuzione del numero di client
 void *diminusico_client(){
 	num_client = num_client - 1;
 }
+/*
+Questa funzione serve per segnalare al child la chiusura del server
+Viene copiata nella socket un messaggio speciale che indica tale evento
+Per ogni client connesso "se ci sono" mando tale segnale
+Esco con un codice di terminazione 1 := good finish
+*/
+void child_exit_handler(){
+	printf("Socket: %d. in chiusura\n", sockfd);
+	bzero(buffer, SIZE_MESSAGE_BUFFER);
+	sprintf(buffer, "%d", CODICE);
+	// se ci sono client connessi notifico a loro la chiusura del server
+	if(num_client >0){
+		if(sendto(sockfd, buffer, SIZE_MESSAGE_BUFFER, 0, (struct sockaddr *) &servaddr, len) < 0){ 
+			herror("Errore invio segnale di chiusura della socket al child.");
+		}
+	}
+	close(sockfd);
+	exit(1);
+}
+
+void *exit_t(){
+	exit(1);
+}
+
+
+void* esci(){
+	sprintf(buffer,"%d",CODICE);
+	exit(1);
+}
+	
+	
 		

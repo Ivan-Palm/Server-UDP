@@ -17,15 +17,20 @@
 #include <pthread.h>
 
 
+/*Valori definiti preliminarmente*/
 #define PORT 8090 //Porta di default per l'inizio delle conversazioni client-server
 #define SIZE_MESSAGE_BUFFER 1064 //Dimensione totale del messaggio che inviamo nell'applicativo
 #define SA struct sockaddr //Struttura della socket
 #define CODICE 25463 //Codice di utility per gestire la chiusura del server
 #define CODICE2 54654 //Codice di utility per gestire l'impossibilità di aggiungere un client
 
+
+/*Dichiarazioni funzioni*/
 void func_list(int, struct sockaddr_in, socklen_t);
 
 
+
+/*Variabili globali*/
 struct timeval t;//Struttura per calcolare il tempo trascorso
 struct sockaddr_in servaddr;// struct di supporto della socket
 socklen_t len;//Lunghezza della struct della socket
@@ -34,33 +39,7 @@ char buffer[SIZE_MESSAGE_BUFFER]; 	//Buffer unico per le comunicazioni
 int sockfd;	//File descriptor della socket
 int err;//Variabile per controllo di errore
 
-/*
-Questa funzione veien utilizzata per creare socket
-Viene creata una socket e la struct di supporto
-Viene ritornata la socket
-*/
-int create_socket(int c_port){
-	// creazione della socket
-	int c_sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	// salvo in len lunghezza della struct della socket
-	len = sizeof(servaddr);
-	// controllo d'errore nella creazione della socket
-	if(sockfd == -1){
-		perror("ATTENZIONE! Creazione della socket fallita...");
-	}
-	else{
-		printf("Socket creata correttamente...\n");
-	}
-	// pulisco la memoria allocata per la struttura
-	bzero(&servaddr, sizeof(servaddr));
-	// setto i parametri della struttura
-	servaddr.sin_family=AF_INET;
-	servaddr.sin_addr.s_addr=htonl(INADDR_ANY);
-	//servaddr.sin_addr.s_addr=inet_addr("127.0.0.1");
-	servaddr.sin_port=htons(c_port);
-	// binding della socket con controllo d'errore
-	return c_sockfd;
-}
+
 
 
 int main() {
@@ -125,7 +104,10 @@ int main() {
 	sockfd = create_socket(port_number);
 	//Ciclo infinito di richieste
 	while(1){
-		
+		if(atoi(buffer) == CODICE){
+				error("ATTENZIONE! Il server non è più in funzione.");
+				return 1;
+			}
 		//Faccio una pulizia preliminare del buffer
 		bzero(buffer, SIZE_MESSAGE_BUFFER);
 
@@ -179,6 +161,35 @@ int main() {
 		}
 	}
 		return 0;
+}
+
+
+/*
+Questa funzione veien utilizzata per creare socket
+Viene creata una socket e la struct di supporto
+Viene ritornata la socket
+*/
+int create_socket(int c_port){
+	// creazione della socket
+	int c_sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	// salvo in len lunghezza della struct della socket
+	len = sizeof(servaddr);
+	// controllo d'errore nella creazione della socket
+	if(sockfd == -1){
+		perror("ATTENZIONE! Creazione della socket fallita...");
+	}
+	else{
+		printf("Socket creata correttamente...\n");
+	}
+	// pulisco la memoria allocata per la struttura
+	bzero(&servaddr, sizeof(servaddr));
+	// setto i parametri della struttura
+	servaddr.sin_family=AF_INET;
+	servaddr.sin_addr.s_addr=htonl(INADDR_ANY);
+	//servaddr.sin_addr.s_addr=inet_addr("127.0.0.1");
+	servaddr.sin_port=htons(c_port);
+	// binding della socket con controllo d'errore
+	return c_sockfd;
 }
 
 
