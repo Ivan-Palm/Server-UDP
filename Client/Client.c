@@ -95,7 +95,7 @@ int main() {
 	sendto(sockfd, buffer, sizeof(buffer), 0, (SA *) &servaddr, len);
 	
 	//Mostro a schermo le possibili scelte
-	printf("Inserisci la stringha inerente ad un comando tra: \n1) exit\n2) list\n3) download \n4) upload\n");
+	printf("Inserisci un comando tra: \n1) exit\n2) list\n3) download \n4) upload\n");
 	
 	//Pulisco buffer
 	bzero(buffer, SIZE_MESSAGE_BUFFER);
@@ -112,6 +112,7 @@ int main() {
 	Converto la stringha ricevuta nel buffer in un intero
 	atoi(char*) converte un stringha nel numero corrispondente
 	*/
+	sleep(5);
 	int port_number =atoi(buffer);
 	printf("\nNUM PORTA DOVE SONO CONNESSO %d\n",port_number);
 	
@@ -133,14 +134,12 @@ int main() {
 		fgets(buffer, SIZE_MESSAGE_BUFFER, stdin);
 		//Verifico se il client vuole uscire o meno dal ciclo
 		
-		if(strncmp("exit", buffer, strlen("exit")) == 0){//Caso di uscita
+		if((strncmp("1", buffer, strlen("1"))) == 0){//Caso di uscita
 			printf("Il client sta chiudendo la connessione...\n");
-			// pulisco il buffer
-			bzero(buffer, SIZE_MESSAGE_BUFFER);
-			// copio la stringa di uscita nel buffer
-			strcpy(buffer, "exit");
 			// invio il messaggio al server per notificargli la chiusura del client
 			err = sendto(sockfd, buffer, sizeof(buffer), 0, (SA *) &servaddr, len);
+			// pulisco il buffer
+			bzero(buffer, SIZE_MESSAGE_BUFFER);
 			if (err < 0){
 				perror("Errore nell'invio del messaggio di chiusura da parte del client\n");
 			}
@@ -151,13 +150,13 @@ int main() {
 		}
 		
 		//CASO LIST
-		else if (strncmp("list", buffer, strlen("list")) == 0) {
+		else if ((strncmp("2", buffer, strlen("2"))) == 0) {
 			func_list(sockfd,servaddr,len);
 			
 		}
 		
 		//CASO UPLOAD
-		else if ((strncmp("upload", buffer, strlen("upload"))) == 0) {
+		else if ((strncmp("4", buffer, strlen("4"))) == 0) {
 			//Invio al server cosa voglio fare
 			err = sendto(sockfd, buffer, sizeof(buffer), 0, (SA *) &servaddr, len);
 			/*attesa rispsta del server*/
@@ -165,7 +164,7 @@ int main() {
 		}
 		
 		//CASO DOWNLOAD
-		else if ((strncmp("download", buffer, strlen("download"))) == 0) {
+		else if((strncmp("3", buffer, strlen("3"))) == 0) {
 			//Invio al server cosa voglio fare
 			err = sendto(sockfd, buffer, sizeof(buffer), 0, (SA *) &servaddr, len);
 			/*attesa rispsta del server*/

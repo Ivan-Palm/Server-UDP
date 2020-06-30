@@ -26,10 +26,10 @@
 #define MAX_CONNECTION 5 //Numero massimo di connessioni accettate dal server
 #define SIZE_MESSAGE_BUFFER 1024 //Diensione totale del messaggio che inviamo nell'applicativo
 #define SA struct sockaddr //Struttura della socket
-
+int num_port[MAX_CONNECTION];
 void *exit_t();
 void *diminusico_client();
-void func_exit(int , int , pid_t );
+void func_exit(int , int , pid_t);
 void func_list(int, struct sockaddr_in, socklen_t);
 
 char *buff_file_list; //Buffer per il contenuto della lista di file
@@ -61,7 +61,7 @@ int create_socket(int s_port){
 		herror("ATTENZIONE! Creazione della socket fallita...");
 	}
 	else{
-		printf("Socket creata correttamente...\n");
+		printf("Socket creata\n");
 	}
 	// pulisco la memoria allocata per la struttura della socket
 	bzero(&servaddr,sizeof(servaddr));
@@ -76,7 +76,7 @@ int create_socket(int s_port){
 		herror("ATTENZIONE! Binding della socket fallito...");
 	}
 	else{
-		printf("Socket-Binding eseguito correttamente...\n");
+		printf("Socket-Binding eseguito\n");
 	}
 	return s_sockfd;
 }
@@ -106,9 +106,19 @@ void *exit_t(){
 }
 
 int main(){
+	
 	//imposto i segnali
 	signal(SIGCHLD,(void*)exit_t);
 	signal(SIGUSR1, (void*)diminusico_client);
+	
+	
+	for(int i=0;i<MAX_CONNECTION;i++){
+		num_port[i]=i+1+PORT;
+	}
+	printf("Porte disponibili:\n");
+	for(int l=0;l<MAX_CONNECTION;l++){
+			printf("[%d]\n",num_port[l]);
+	}
 	//inizializzo la sharedmemory per salvare i process-id dei child
 	shmid = shmget(IPC_PRIVATE, sizeof(int)*MAX_CONNECTION, IPC_CREAT|0666);
 	if(shmid == -1){
@@ -126,14 +136,18 @@ int main(){
 		signal(SIGUSR1, SIG_IGN);
 		//child_exit(shmid);
 	}
-	
+	sleep(5);
 	//entro nel ciclo infinito di accoglienza di richieste
 	while(1){
 		bzero(buffer, SIZE_MESSAGE_BUFFER);
+		
+		
 		//attendo un client
 		if(recvfrom(s_sockfd, buffer, SIZE_MESSAGE_BUFFER, 0, (struct sockaddr *) &servaddr, &len) < 0){
 			herror("Errore nella recvfrom nel primo while del server.");
 		}
+		sleep(5);
+
 		bzero(buffer, SIZE_MESSAGE_BUFFER);
 		//aumento contatore che segnala i client attivi
 		num_client = num_client + 1;
@@ -148,6 +162,22 @@ int main(){
 			port_number = ((port_number )%(MAX_CONNECTION))+1;
 			//aggiorno numero di porta da passare al client
 			client_port = PORT + port_number;//il primo avra 8091 il secondo 8092 e cosi via...
+			int k=0;
+			for(int j=0;j<MAX_CONNECTION;j++){
+				if(num_port[j]!=0){
+					client_port = num_port[j];
+					num_port[j]=0;
+					break;
+				}
+				else{
+					k++;
+				}
+			}
+			if(k==MAX_CONNECTION)
+			{
+				printf("Non ho porte libere\n");
+				//invio sengale al client
+			}
 			printf("\n------------------------------NUOVO UTENTE CONNESSO!Client port %d------------------------------\n",client_port);
 			bzero(buffer, SIZE_MESSAGE_BUFFER);
 			//scrivo il valore aggionrato nel buffer di comunicazione
@@ -189,9 +219,9 @@ int main(){
 						}
 					}
 					/*Gestisco la richiesta del client*/
-					
+					printf("\nBUFFER %d\n",atoi(buffer));
 					/*Caso exit*/
-					if(strncmp("exit", buffer, strlen("exit")) == 0){
+					if(strncmp("1", buffer, strlen("1")) == 0){
 						printf("Client port %d -> Richiesto exit\n",client_port);
 						func_exit(client_port,sockfd,parent_pid);
 						while(1){
@@ -200,13 +230,13 @@ int main(){
 					}
 					
 					/*Caso list*/
-					else if(strncmp("list", buffer, strlen("list")) == 0){
+					else if(strncmp("2", buffer, strlen("2")) == 0){
 						printf("Client port %d -> Richiesto list\n",client_port);
 						func_list(sockfd,servaddr,len);
 					}
 					
 					/*Caso download*/
-					else if(strncmp("download", buffer, strlen("download")) == 0){
+					else if(strncmp("3", buffer, strlen("3")) == 0){
 						printf("Client port %d -> Richiesto download\n",client_port);
 						//func_download(sockfd,servaddr,len);
 						
@@ -214,7 +244,7 @@ int main(){
 					}	
 					/*Caso upload*/
 					
-					else if(strncmp("upload", buffer, strlen("upload")) == 0){
+					else if(strncmp("4", buffer,strlen("4")) == 0){
 						printf("Client port %d -> Richiesto upload\n",client_port);
 						//func_upload(sockfd,servaddr,len);
 							
@@ -288,6 +318,7 @@ void func_exit(int client_port, int socket_fd, pid_t pid){
 		error("Errore nella chiusura della socket verso la porta.",client_port);
 	}
 	kill(pid, SIGUSR1);
+	
 }
 	
 /*
