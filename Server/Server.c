@@ -26,11 +26,15 @@
 #define SIZE_MESSAGE_BUFFER 1024 // diensione totale del messaggio che inviamo nell'applicativo
 #define SA struct sockaddr // struttura della socket
 
+void func_exit(int , int , pid_t );
+void func_list(int, struct sockaddr_in, socklen_t);
 
+char *buff_file_list; 	// buffer per il contenuto della lista di file
 char buffer[SIZE_MESSAGE_BUFFER]; 	// buffer unico per le comunicazioni
 int s_sockfd;	// file descriptor della socket usata dai processi figli
 pid_t parent_pid; 	// pid del primo processo padre nel main
 int num_client=0;
+int size; 	// dimensione del file da trasferire
 struct sockaddr_in servaddr;	// struct di supporto della socket
 socklen_t len;	// lunghezza della struct della socket
 int port_number = 0; 	// variabile di utility per il calcolo delle porte successive da dare al client
@@ -129,7 +133,6 @@ int main(){
 				close(s_sockfd);
 				//entro nel ciclo di ascolto infinito
 				while(1){
-					printf("\nAttendo messaggio:");
 					bzero(buffer, SIZE_MESSAGE_BUFFER);
 					//aspetto di ricevere un messaggio
 					if(recvfrom(sockfd, buffer, SIZE_MESSAGE_BUFFER, 0, (struct sockaddr *) &servaddr, &len) < 0){
@@ -143,27 +146,28 @@ int main(){
 					}
 					/*Gestisco la richiesta del client*/
 					if(strncmp("exit", buffer, strlen("exit")) == 0){
-						printf("Mi ha richiesto exit\n");
-						//func_exit(sockfd,servaddr,len);
+						printf("Client port %d -> Richiesto exit\n",client_port);
+						func_exit(client_port,sockfd,parent_pid);
+						while(1){
+							sleep(1000);
+						}
 					}
 					else if(strncmp("list", buffer, strlen("list")) == 0){
-						printf("Mi ha richiesto una list\n");
-						//func_list(sockfd,servaddr,len);
+						printf("Client port %d -> Richiesto list\n",client_port);
+						func_list(sockfd,servaddr,len);
 					}
 					else if(strncmp("download", buffer, strlen("download")) == 0){
-						printf("Mi ha richiesto una download\n");
+						printf("Client port %d -> Richiesto download\n",client_port);
 						//func_download(sockfd,servaddr,len);
 						
 						
 					}	
 					else if(strncmp("upload", buffer, strlen("upload")) == 0){
-						printf("Mi ha richiesto una upload\n");
+						printf("Client port %d -> Richiesto upload\n",client_port);
 						//func_upload(sockfd,servaddr,len);
 							
 					}
 					else{
-						printf("Mi ha richiesto un comando sbagliato\n");
-						sprintf(buffer,"HAI SBAGLIATO");
 						//func_error(sockfd,servaddr,len);
 					}
 				}
@@ -173,5 +177,49 @@ int main(){
 	}
 	return 0;
 }
+
+void func_list(int sockfd, struct sockaddr_in servaddr, socklen_t len){
+	int ret;
+	int fd; //Puntatore al file contenente la lista dei file
+	fd= open("lista.txt",O_RDONLY,0666);//apro uno stream di sola lettura verso il file
+	if(fd==-1){
+		printf("Errore apertura lista dei file\n");
+		return;
+	}
+	size = lseek(fd,0,SEEK_END); //Vedo la dimensione del file
+	if(size<0){
+		printf("Errore lettura della dimensione della lista dei file\n");
+		return;
+	}
+	buff_file_list=malloc(size); //alloco la memoria per contenerlo
+	if(buff_file_list==NULL){
+		printf("Errore allocazione memoria per contenere la lista dei file\n");
+		return;
+	}
+	lseek(fd,0,0);//riposiziono la testina all'inizio del file
+	while((read(fd,buff_file_list,size)==-1)){//inserisco all'interno di buff_file_list l'intero contenuto del file
+		if(errno!=EINTR){
+			printf("Errore lettura contenuto della lista dei file\n");
+			return;
+		}
+	}
+	while((sendto(sockfd,buff_file_list,size,0,(struct sockaddr *) &servaddr, len))==-1){//metto il contenuto sulla socket
+		if(errno!=EINTR){
+		printf("Errore caricamneot lista dei file sulla socket\n");
+		return;
+		}
+	}	
+	free(buff_file_list);//dealloco la memoria allocata precedentemente con la malloc
+}
+
+void func_exit(int client_port, int socket_fd, pid_t pid){
+	printf("Chiudo la connessione verso la porta: %d.\n", client_port);
+	int ret = close(socket_fd);
+	if(ret == -1){
+		error("Errore nella chiusura della socket verso la porta.",client_port);
+	}
+	kill(pid, SIGUSR1);
+}
+	
 		
 		

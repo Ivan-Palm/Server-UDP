@@ -23,6 +23,8 @@
 #define PASSWORD 11031992 // pw di utility per gestire la chiusura del server
 #define PASSWORD2 14031995 // pw di utility per gestire l'impossibilità di aggiungere un client
 
+void func_list(int, struct sockaddr_in, socklen_t);
+
 
 struct timeval t;	//struttura per calcolare il tempo trascorso
 struct sockaddr_in servaddr;	// struct di supporto della socket
@@ -116,18 +118,14 @@ int main() {
 	//Creo la socket sulla porta passata dal server
 	sockfd = create_socket(port_number);
 	//Ciclo infinito di richieste
-	int i=0;
 	while(1){
 		
 		//Faccio una pulizia preliminare del buffer
 		bzero(buffer, SIZE_MESSAGE_BUFFER);
 
 		//Inserisco nel buffe rla linea di richiesta del client
-		if(i>0){
-		printf("\nInserisci un comando:");
-		}
+		printf("\nComando:");
 		fgets(buffer, SIZE_MESSAGE_BUFFER, stdin);
-		i++;
 		//Verifico se il client vuole uscire o meno dal ciclo
 		
 		if(strncmp("exit", buffer, strlen("exit")) == 0){//Caso di uscita
@@ -142,7 +140,6 @@ int main() {
 				perror("Errore nell'invio del messaggio di chiusura da parte del client\n");
 			}
 			// chiudo la socket
-			sleep(1);
 			close(sockfd);
 			printf("Client disconnesso.\n");
 			return 0;
@@ -150,10 +147,8 @@ int main() {
 		
 		//CASO LIST
 		else if (strncmp("list", buffer, strlen("list")) == 0) {
-			//Invio al server cosa voglio fare
-			err = sendto(sockfd, buffer, sizeof(buffer), 0, (SA *) &servaddr, len);
-			/*attesa rispsta del server*//*restituira dentro buffer la lista degliu elementi disponibili*/
-			printf("Lista dei file disponibili nel server:\n%s\n", buffer);
+			func_list(sockfd,servaddr,len);
+			
 		}
 		
 		//CASO UPLOAD
@@ -181,3 +176,13 @@ int main() {
 	}
 		return 0;
 }
+
+void func_list(int sockfd, struct sockaddr_in servaddr, socklen_t len){
+	//Invio al server cosa voglio fare
+	err = sendto(sockfd, buffer, sizeof(buffer), 0, (SA *) &servaddr, len);
+	/*attesa rispsta del server*//*restituira dentro buffer la lista degliu elementi disponibili*/
+	bzero(buffer,SIZE_MESSAGE_BUFFER);
+	recvfrom(sockfd,buffer,sizeof(buffer),0,(SA *) &servaddr, &len);
+	printf("--------------------------------\nLista dei file disponibili nel server:\n%s\n--------------------------------", buffer);
+}
+	
