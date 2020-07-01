@@ -183,63 +183,93 @@ int main() {
 			printf("Lista dei file: \n%s\n",buff_file_list);
 			/*Scelta del file*/
 			bzero(buffer, SIZE_MESSAGE_BUFFER);
+			SCELTA:
 			printf("Scegli il file:");
 			fgets(buffer, SIZE_MESSAGE_BUFFER,stdin);
+			close(file);
 			bzero(file_name,128);//pulisco il buffer contenente il nome del file
 			strncpy(file_name,buffer,strlen(buffer)-1);
+			
+			
+			/*Apro il file da inviare per leggere i suoi dati*/
+			int file_inv = open(file_name,O_RDONLY,0666);
+			if(file_inv<0){
+				printf("File non presente nella directory\n");
+				bzero(file_name,128);//pulisco il buffer contenente il nome del file
+				bzero(buffer, SIZE_MESSAGE_BUFFER);
+				goto SCELTA;
+			}
+
 			bzero(buffer, SIZE_MESSAGE_BUFFER);
+			printf("Sto inviando al server il nome %s\n",file_name);
+			
+			
 			/*Invio il nome del file al server*/
 			sendto(sockfd, file_name, sizeof(file_name), 0, (SA *) &servaddr, len);
 			if (err < 0){
 				error("Errore nella sendto della get_name_and_size_file del client.");
 			}
+			
+			
 			/*Calcolo quanti pacchetti devo inviare al sevrer*/
-			dim = lseek(file, 0, SEEK_END);
+			dim = lseek(file_inv, 0, SEEK_END);
 			packet_count = (ceil((dim/SIZE_PAYLOAD)))+1;
 			printf("Numero di pacchetti da caricare: %d.\n", packet_count);
-			lseek(file, 0, 0);
+			lseek(file_inv, 0, 0);
 			bzero(buffer, SIZE_MESSAGE_BUFFER);
 			/*Inserisco la dimensione effettiva delf ile nel buffer e la mando al server */
 			sprintf(buffer, "%d", size);
+			/*Invio la dimensione del file*/
 			if (sendto(sockfd, buffer, SIZE_MESSAGE_BUFFER, 0, (struct sockaddr *) &servaddr, len) <0){
 				error("Errore nella sento della send_len_file del client.");
 			}			
 			
 			/*Inizio il caricamento del file*/
 			struct packet_struct file_struct[packet_count];//creo tanti pacchetti quanti calcolati prima con packet_count
+			
 			/*Creo un buffer avente la dimensione pari ad un pacchetto*/
 			char *temp_buf;
 			temp_buf = malloc(SIZE_PAYLOAD);//temp_buf ha la dimensione di un pacchetto
 			for (int i = 0; i < packet_count; i++){
 				bzero(temp_buf, SIZE_PAYLOAD);//pulisco tempo_buf
-				read(fd, temp_buf, SIZE_PAYLOAD);//leggo quanto possibile da incapsulare in un pacchetto
+				read(file_inv, temp_buf, SIZE_PAYLOAD);//leggo quanto possibile da incapsulare in un pacchetto
 				/*Creo un array di dimensione pari ad un pacchetto*/
 				char pacchetto[SIZE_MESSAGE_BUFFER];
 				/*Inserisco i dati di quel pacchetto*/
 				sprintf(pacchetto, "%d ", i);//Copio il numero di sequenza di quel pacchetto
 				strcat(pacchetto, temp_buf);//Copio nell'array creato per contenerlo, il numero di sequenza ed il contenuto precedentemente ricavato
 				sprintf(file_struct[i].buf, "%s", pacchetto);//Riscrivo quello appena creato nella struttura nella posizione i-esima
+				
 				file_struct[i].counter = i;//assegno l'indice i-esimo all'entry in quella struttura
 			/*attesa rispsta del server*/
 			printf("Stai effettuando l'upload\n");
 			}
+			/*Stampo l'inter struttura*/
+			for (int i = 0; i < packet_count; i++){
+				printf("\nFILE_STRUCT[%d].BUF contiene : -----------------------------------\n%s\n-------------------------------\n",i,file_struct[i].buf);
+			}
+			/*Da qui in poi ho tutti i pacchetti salvati nella struttura*/
+			
 			printf("Ho caricato i pacchetti nella struttura\n");
 			/*Fase di invio dei pacchetti*/
 			/*Vedo quanti pacchetti non sono multipli della windows size*/
 			int offset = packet_count%WINDOW_SIZE;
-			printf("OFFSET->%d",offset);
-			/*Caso in cui il numero dei pacchetti non è un multiplo della WINDOWS_SIZE*/
-			if(offset > 0){
+			/*Caso in cui il numero dei pacchetti da inviare in maniera diversa perche non sono un multipli della WINDOWS_SIZE*/
+			if(offset > 0){//Numoero di pacchetti da inviare "diversamente"
+			/*Se ci sono pacchetti "normali" da inviare invio quelli*/
 				if(packet_count-seq >= offset){
+					printf("Inizio inviare i pack normali\n");
 					while(seq<packet_count - offset){
-						printf("packet_count= %d\t\t seq= %d\t\t offset= %d\t\t.\n", packet_count, seq, offset);
+						printf("packet_count= %d\t\t seq= %d\t\t  di cui offset= %d\t\t\n", packet_count, seq, offset);
 						seq = send_packet_GO_BACK_N(file_struct, seq, WINDOW_SIZE);//mando la struttura contenente i pacchetti, la sequenza, e la dimensione della finestra
 					}
 				}
-				// invio gli n offset pacchetti di resto 
+				printf("Ho finito di inviare i pack normali\n");
+				printf("Inizio inviare i pack diversi\n");
+				/*Una volta inviati i pacchetti "normali" invio offset pacchetti "diversi"*/
 				printf("packet_count= %d\t\t seq= %d\t\t offset= %d\t\t.\n", packet_count, seq, offset);
 				seq = send_packet_GO_BACK_N(file_struct, seq, offset);//mando la struttura contenente i pacchetti, la sequenza, e il numero di pacchetti rimanenti
-				
+				printf("Ho finito di inviare i pack diversi\n");
 			}
 			/*Caso in cui il numero dei pacchetti è un multiplo della WINDOWS_SIZE*/
 			else{
@@ -312,24 +342,50 @@ void func_list(int sockfd, struct sockaddr_in servaddr, socklen_t len){
 }
 	
 	
-	
+/*offset ha il valore della WINDOWS SIZE per i pacchetti "normali" e offset per i pack "diversi"*/
 int send_packet_GO_BACK_N(struct packet_struct *file_struct, int seq, int offset){
-	printf("SONO NELL'INVIO VERO E PROPRIO DEL PACCHETTO\n");
 	/*Ciclo for che invia WINDOWS_SIZE pacchetti alla volta*/
+	int lock=0;
 	for(int i = 0; i < offset; i++){	
-		//imposto l'ack del pacchetto che sto inviando come 0, lo metterò a 1 una volta ricevuto l'ack dal client
-		file_struct[seq].ack = 0;
-		printf("Sto inviando il pacchetto %d.\n", seq);
-		/*Mando il primo pacchetto*/
-		if(sendto(sockfd, file_struct[seq].buf, SIZE_MESSAGE_BUFFER, 0, (struct sockaddr *) &servaddr, len) < 0) { 
-			fprintf(stderr, "Errore nell'invio del pacchetto numero: %d.\n", seq);
-			exit(EXIT_FAILURE);
+		//imposto l'ack dei N pacchetti che sto inviando come 0, lo metterò a 1 una volta ricevuto l'ack complessivo dal client
+		for(int h=0;h<offset;h++){
+			/*seq(inzialmente uguale a 0, indica il numero del pack)*/
+			file_struct[seq+h].ack = 0;
 		}
-		printf("Pacchetto inviato attendo il riscontro\n");
+		/*Mando i primi N pacchetti*/
+		for(int h=0;h<offset;h++){
+			if(sendto(sockfd, file_struct[seq+h].buf, SIZE_MESSAGE_BUFFER, 0, (struct sockaddr *) &servaddr, len) < 0) { 
+				fprintf(stderr, "Errore nell'invio del pacchetto numero: %d.\n", seq);
+				exit(EXIT_FAILURE);
+			}
+		}
+		printf("Pacchetti [%d, %d, %d] inviati attendo il riscontro\n",seq,seq+1,seq+2);
 		// pulisco il buffer
 		bzero(buffer, SIZE_MESSAGE_BUFFER);
+		printf("Attendo ACK accoumulativo di [%d, %d, %d]  \n",seq,seq+1,seq+2);
 		//Ricevo ack
-		recvfrom(sockfd,buffer, SIZE_MESSAGE_BUFFER, 0, (SA *) &servaddr, &len);
+		int err = recvfrom(sockfd,buffer, SIZE_MESSAGE_BUFFER, 0, (SA *) &servaddr, &len);
+		if (err < 0){
+			if(errno == EAGAIN)
+			{
+				lock = 1;
+				printf("il pacchetto è andato perso, ack: %d non ricevuto\n",seq);
+			}
+			else{
+				error("Errore nella recvfrom della send_packet del server.");
+			}
+		}
+		if(lock == 0){
+			printf("Ho ricevuto l'ack dei pacchetti [%d, %d, %d]  \n",seq,seq+1,seq+2);
+			// è una variabile che assume il valore del numero ricevuto 
+			// con l'ack, che è proprio il numero corrispondente al pacchetto, 
+			// ora imposto l'ack a 1
+			int check = atoi(buffer);
+			if(check >= 0){
+				file_struct[check].ack = 1;
+			}
+		}
+		seq=seq+offset;
 	}
 	/*Controllo se ho inviato tutti i pacchetti*/
 	/*printf("Sto entrando nella check per l'eventuale ritrasmissione di pacchetti persi seq = %d.\n",seq);
@@ -371,6 +427,6 @@ int send_packet_GO_BACK_N(struct packet_struct *file_struct, int seq, int offset
 			}
 		}
 	}*/
-	return seq;
-
+	
+return seq;
 }

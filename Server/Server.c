@@ -270,7 +270,6 @@ fuori sequenza e mandare ack complessivi, oppure in caso di pacchetto fuori ordi
 */
 void recive_UDP_GO_BACK_N(){
 	
-	
 	int seq,timer; //dorvò scegliere opportunamente il timer di scadenza
 	int count = 0;
 	int counter = 0;
@@ -283,7 +282,6 @@ void recive_UDP_GO_BACK_N(){
 		// entriamo in questo ciclo solo nel caso in cui rimangono al piu offset pacchetti, 
 		// di conseguenza la dimensione della nostra finestra diventa offset
 		if(packet_count-count <= offset + 1 && offset!=0){
-			printf("sono nel ciclo con offset\n");
 			if(WINDOW_SIZE%2){
 				w_size = offset;
 			}
@@ -298,7 +296,7 @@ void recive_UDP_GO_BACK_N(){
 			char pckt_rcv[SIZE_MESSAGE_BUFFER];
 			char *pckt_rcv_parsed;
 			pckt_rcv_parsed = malloc(SIZE_PAYLOAD);
-			/*ricevo pacchetti*/
+			/*ricevo pacchetto*/
 			int err = recvfrom(sockfd, pckt_rcv, SIZE_MESSAGE_BUFFER, 0, (SA *) &servaddr, &len);
 			if (err < 0){
 				if(errno == EAGAIN)
@@ -321,7 +319,7 @@ void recive_UDP_GO_BACK_N(){
 				count = seq + 1;
 			}
 			/*
-			La funzione restituisce la sottostringa del pacchetto
+			La funzione restituisce la sottostringa del pacchetto -> PASSA MALE IL CONTENUTO
 			contentente il messaggio vero e proprio
 			*/
 			char *c_index;
@@ -333,18 +331,17 @@ void recive_UDP_GO_BACK_N(){
 			memcpy(substr, start, end - start);
 			pckt_rcv_parsed = substr;
 			
-			
 			/*Ora devo mandare gli ack*/
 			if(sendACK(seq,WINDOW_SIZE)){
 			counter = counter + 1;
 				// copia del contenuto del pacchetto nella struttura ausiliaria
+				printf("CONTENUTO PACK %s\n",pckt_rcv_parsed);
 				if(strcpy(pacchett[seq].buf, pckt_rcv_parsed) == NULL){
 					exit(-1);
 				}
 				if (strcpy(buff_file[seq], pacchett[seq].buf) == NULL){
 					exit(-1);
 				}
-
 				printf("\tPacchetto ricevuto numero di seq: %d.\n", seq);				
 			}
 			else{
@@ -416,6 +413,7 @@ void receive_data(){
 	Ora per ricevre il file devo allocare una memoria sufficentemente grande per contenerlo
 	ogni volta che mi arriva un pacchetto devo far si che la memoria si ricordi qual'era il precedente, e quanti ne mancano
 	*/
+	/*Attendo la lunghezza del file*/
 	err = recvfrom(sockfd, buffer, SIZE_MESSAGE_BUFFER, 0, (SA *) &servaddr, &len);
 	if(err < 0){
 		error("Errore nella recvfrom della receive_len_file del server.");
@@ -452,10 +450,14 @@ void receive_data(){
 	printf("Inizio a ricevere i pacchetti con GO-BACK-N\n");
 	recive_UDP_GO_BACK_N();	
 	printf("Ricezione terminata correttamente.\n");
+	
+	/*penspo che manca la scrittur nel file fd*/
+	
+	
 	/*Aggiorno la lista dei file*/
 	printf("Aggiorno file_list...\n");
 	FILE *f;
-	f=fopen("lista.txt","w");
+	f=fopen("lista.txt","a");
 	fprintf(f, "\n%s", pathname); 
 	printf("File aggiornato correttamente.\nOperazione di upload completata con successo.\n");
 	//printf("Operazione di upload completata con successo.\n");
