@@ -21,6 +21,7 @@
 
 
 /*Valori definiti preliminarmente*/
+#define PORT_RESET 8089 //Usata per creare una soket di comunicazione al client che dorvà essere subito scollegato
 #define PORT 8090 //Porta di default per l'inizio delle conversazioni client-server
 #define MAXLINE 1024
 #define CODICE 25463 //Codice di utility per gestire la chiusura del server
@@ -29,6 +30,7 @@
 #define SA struct sockaddr //Struttura della socket
 #define SIZE_PAYLOAD 1024 // dimensione del payload nel pacchetto UDP affidabile
 #define LOSS_PROBABILITY 15 // probabilità di perdita
+
 
 /*Dichiarazioni funzioni*/
 void func_exit(int , int , pid_t);
@@ -46,13 +48,13 @@ struct pacchetto{
 
 
 /*Variabili globali*/
+int WINDOW_SIZE=3;
 int packet_count; 	// numero di pacchetti da inviare
 char **buff_file;
 char pathname[1024];
 int **numeri_di_porta;
 int num_port[MAX_CONNECTION];
 void *exit_t();
-void *diminusico_client();
 char *buff_file_list; //Buffer per il contenuto della lista di file
 char buffer[SIZE_MESSAGE_BUFFER]; //Buffer per comunicare con i client
 int s_sockfd;//File descriptor della socket per i child
@@ -75,7 +77,7 @@ int main(){
 
 	//imposto i segnali
 	signal(SIGCHLD,(void*)exit_t);
-	signal(SIGUSR1, (void*)diminusico_client);
+
 	
 	/*Creo un array di interi accessibile da piu processi, col fine di capire quale porte sono libere o meno*/
 	numeri_di_porta=malloc((MAX_CONNECTION*sizeof(int*)));
@@ -106,7 +108,8 @@ int main(){
 	
 	/*Salvo il pid del processo padre in una variabile globale*/
 	parent_pid = getpid();
-	//creo la socket di comunicazione
+	
+	//creo la socket di comunicazione per i child
 	s_sockfd = create_socket(PORT);
 	
 	//creo un processo che gestisce l'eventuale richiesta di chiusura del server
@@ -115,25 +118,25 @@ int main(){
 		signal(SIGUSR1, SIG_IGN);
 		//child_exit(shmid);
 	}
-	sleep(5);
 	//entro nel ciclo infinito di accoglienza di richieste
 	while(1){
 		bzero(buffer, SIZE_MESSAGE_BUFFER);
-		signal(SIGINT,(void*)esci);
+		signal(SIGINT,(void*)exit_t);
 		
 		//attendo un client
 		if(recvfrom(s_sockfd, buffer, SIZE_MESSAGE_BUFFER, 0, (struct sockaddr *) &servaddr, &len) < 0){
 			herror("Errore nella recvfrom nel primo while del server.");
 		}
-		
+
 		bzero(buffer, SIZE_MESSAGE_BUFFER);
+		
 		//aumento contatore che segnala i client attivi
 		num_client = num_client + 1;
 		
 		//verifico se ho superato il range di client ammissibili in tal caso li diminusco
 		if(num_client>MAX_CONNECTION){
 			printf("Numero massimo di client raggiunto!\n");
-			diminusico_client();
+			esci();
 		}
 		else{
 			//aggiorno il numero di porta sulla quale fare connettere i client
@@ -141,6 +144,7 @@ int main(){
 			//aggiorno numero di porta da passare al client
 			client_port = PORT + port_number;//il primo avra 8091 il secondo 8092 e cosi via...
 			int k=0;
+			
 			/*Procedura per la ricerca del numero di porta non utilizzato
 			Questa procedura permette di marcare con uno zero i numeri di porta utilizzati
 			Il child ed il parent utilizzeranno delle pagine di memoria condivisa per capire se una porta è libera
@@ -174,6 +178,7 @@ int main(){
 				herror("Errore nella sendto 2 del primo while del main del server.");
 			}
 			bzero(buffer, SIZE_MESSAGE_BUFFER);
+			printf("UTENTI CONNESSI %d\n",num_client);
 			/*
 			Creo un child per ogni connessione, esso la gestirà mentre il padre rimarrà in ascolto di nuove eventuali connessioni
 			Questa fase è molto importante in quanto ogni volta che viene richiesta una connessione viene creato un child che 
@@ -186,7 +191,7 @@ int main(){
 				Entro nella gestione della singola connessione verso un client
 				Creo una nuova socket per questa connessione e chiudo la socket di comunicazione del padre
 				*/
-				signal(SIGINT,(void*)esci);
+				signal(SIGINT,(void*)exit_t);
 				sockfd = create_socket(client_port);//apro
 				close(s_sockfd);//chiudo
 				/*creo i segnali per la gestione del child*/
@@ -259,25 +264,37 @@ void func_upload(int sockfd, struct sockaddr_in servaddr, socklen_t len){
 	receive_data();
 }
 
-
+/*
+Il server in questo caso dovrebbe scartare i pacchetti 
+fuori sequenza e mandare ack complessivi, oppure in caso di pacchetto fuori ordine l'ultimo ack riccevuto
+*/
 void recive_UDP_GO_BACK_N(){
 	
-	int finestra;
+	
 	int seq,timer; //dorvò scegliere opportunamente il timer di scadenza
 	int count = 0;
 	int counter = 0;
 	struct pacchetto pacchett[packet_count];
-	printf("Scegli la dimensione della finestra di trasmissione\n");
-	scanf("%d",&finestra);
-	printf("Hai scelto una finestra con %d slot",finestra);
-	int offset = packet_count%finestra; //indica quante ondate di pacchetti devo ricevere 
+	int offset = packet_count%WINDOW_SIZE; //indica quante ondate di pacchetti devo ricevere 
+	int w_size=WINDOW_SIZE;
 	/*Vado nel ciclo finche non termino i pacchetti*/
 	while(count < packet_count||counter<packet_count-1){
 		//inizio a ricevere pacchetti
-		for(int i = 0; i < finestra; i++){
-			
+		// entriamo in questo ciclo solo nel caso in cui rimangono al piu offset pacchetti, 
+		// di conseguenza la dimensione della nostra finestra diventa offset
+		if(packet_count-count <= offset + 1 && offset!=0){
+			printf("sono nel ciclo con offset\n");
+			if(WINDOW_SIZE%2){
+				w_size = offset;
+			}
+			else
+			{
+				w_size = offset +1;
+			}
+		}
+		for(int i = 0; i < w_size; i++){
 			CICLO:
-			printf("sono nel for\n");
+			printf("%d)Sono nel for\n",i);
 			char pckt_rcv[SIZE_MESSAGE_BUFFER];
 			char *pckt_rcv_parsed;
 			pckt_rcv_parsed = malloc(SIZE_PAYLOAD);
@@ -298,7 +315,7 @@ void recive_UDP_GO_BACK_N(){
 			char *buff;
 			const char s[2] = " ";
 			buff = strtok(pckt_rcv, s);//divido il pacchetto in piu stringhe divise da s e lo metto in buf tutto segmentato
-			int i = atoi(buff);
+			int i = atoi(buff); //i prende il numero di sequenza nell'headewr del pacchetto
 			seq=i;
 			if(seq >= count){
 				count = seq + 1;
@@ -315,8 +332,10 @@ void recive_UDP_GO_BACK_N(){
 			char *substr = (char *)calloc(1, end - start + 1);
 			memcpy(substr, start, end - start);
 			pckt_rcv_parsed = substr;
+			
+			
 			/*Ora devo mandare gli ack*/
-			if(sendACK(seq,finestra)){
+			if(sendACK(seq,WINDOW_SIZE)){
 			counter = counter + 1;
 				// copia del contenuto del pacchetto nella struttura ausiliaria
 				if(strcpy(pacchett[seq].buf, pckt_rcv_parsed) == NULL){
@@ -326,11 +345,11 @@ void recive_UDP_GO_BACK_N(){
 					exit(-1);
 				}
 
-				printf("\t\tPacchetto ricevuto numero di seq: %d.\n", seq);				
+				printf("\tPacchetto ricevuto numero di seq: %d.\n", seq);				
 			}
 			else{
 				goto CICLO;
-				printf("\t\tPacchetto NON ricevuto numero di seq: %d.\n", seq);
+				printf("\tPacchetto NON ricevuto numero di seq: %d.\n", seq);
 			}
 			FINE:
 			printf("");	
@@ -488,7 +507,6 @@ Viene copiato il contenuto del file in tale memoria
 Viene passato l'informazione alla socket verso il client contenente la lista dei file
 */
 void func_list(int sockfd, struct sockaddr_in servaddr, socklen_t len){
-	int ret;
 	int fd; //Puntatore al file contenente la lista dei file
 	fd= open("lista.txt",O_RDONLY,0666);//apro uno stream di sola lettura verso il file
 	if(fd==-1){
@@ -537,14 +555,7 @@ void func_exit(int client_port, int socket_fd, pid_t pid){
 	kill(pid, SIGUSR1);	
 }
 	
-/*
-Questa funzione viene invocata quando il numero massimo di client si trova connesso
-Essa provoca una diminuzione del numero di client
-*/	
-void *diminusico_client(){
-	num_client = num_client - 1;
-	
-}
+
 /*
 Questa funzione serve per segnalare al child la chiusura del server
 Viene copiata nella socket un messaggio speciale che indica tale evento
@@ -571,9 +582,16 @@ void *exit_t(){
 
 
 void* esci(){
-	sprintf(buffer,"%d",CODICE);
-	exit(1);
+	bzero(buffer, SIZE_MESSAGE_BUFFER);
+	//scrivo il valore aggionrato nel buffer di comunicazione
+	sprintf(buffer,"%d",PORT_RESET);
+	//comunico al client su quale porta si sta connettendo
+	if(sendto(s_sockfd, buffer, SIZE_MESSAGE_BUFFER,0, (struct sockaddr *) &servaddr, len) < 0){
+		herror("Errore nella sendto 2 del primo while del main del server.");
+	}
+	bzero(buffer, SIZE_MESSAGE_BUFFER);
 }
+
 	
 	
 		
