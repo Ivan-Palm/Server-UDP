@@ -32,12 +32,17 @@
 #define LOSS_PROBABILITY 15 // probabilità di perdita
 
 
+
 /*Dichiarazioni funzioni*/
 void func_exit(int , int , pid_t);
 void func_list(int, struct sockaddr_in, socklen_t);
 void *exit_t();
 void *esci();
 void child_exit_handler();
+void func_upload(int , struct sockaddr_in , socklen_t );
+void receive_data();
+int sendACK(int ,int );
+int create_socket(int);
 
 /*strutture*/
 struct pacchetto{
@@ -198,7 +203,7 @@ int main(){
 				/*creo i segnali per la gestione del child*/
 				signal(SIGCHLD, SIG_IGN);
 				signal(SIGUSR1, SIG_IGN);
-				signal(SIGUSR2, child_exit_handler);//Gestione della chiusira del server, manda un messaggio di chiusura verso il client
+				//signal(SIGUSR2, child_exit_handler);//Gestione della chiusira del server, manda un messaggio di chiusura verso il client
 				/*Entro nel ciclo di ascolto infinito*/
 				while(1){
 					bzero(buffer, SIZE_MESSAGE_BUFFER);//Pulisco il buffer
@@ -220,6 +225,7 @@ int main(){
 						while(1){
 							sleep(1000);
 						}
+						bzero(buffer, SIZE_MESSAGE_BUFFER);
 					}
 					
 					/*Caso list*/
@@ -232,7 +238,7 @@ int main(){
 					else if(strncmp("3", buffer, strlen("3")) == 0){
 						printf("Client port %d -> Richiesto download\n",client_port);
 						//func_download(sockfd,servaddr,len);
-						
+						bzero(buffer, SIZE_MESSAGE_BUFFER);
 						
 					}	
 					/*Caso upload*/
@@ -240,7 +246,7 @@ int main(){
 					else if(strncmp("4", buffer,strlen("4")) == 0){
 						printf("Client port %d -> Richiesto upload\n",client_port);
 						func_upload(sockfd,servaddr,len);
-							
+						bzero(buffer, SIZE_MESSAGE_BUFFER);
 					}
 					
 					/*Caso errore*/
@@ -296,15 +302,14 @@ void recive_UDP_GO_BACK_N(){
 				w_size = offset +1;
 			}
 		}
-		
 		/*
 		1)w_size ha dimensione WINDOW_SIZE nel caso di pach "normali" 
 		2)w_size ha dimensione offset nel caso di pach "diversi" 
 		*/
-		
-		for(int i = 0; i < w_size; i++){
+		printf("\nW_SIZE: %d\n\n",WINDOW_SIZE);
+		for(int i = 0; i <w_size; i++){
 			CICLO:
-			printf("%d)Sono nel ciclo di riscontro dei pacchetti\n",i);
+			printf(" ");
 			char pckt_rcv[SIZE_MESSAGE_BUFFER];
 			char *pckt_rcv_parsed;
 			pckt_rcv_parsed = malloc(SIZE_PAYLOAD);
@@ -318,7 +323,7 @@ void recive_UDP_GO_BACK_N(){
 				}
 				else
 				{
-					error("Errore nella recvfrom della recive_UDP_rel_file nel client");
+					herror("Errore nella recvfrom della recive_UDP_rel_file nel client");
 				}
 			}
 			
@@ -328,7 +333,7 @@ void recive_UDP_GO_BACK_N(){
 			buff = strtok(pckt_rcv, s);//divido il pacchetto in piu stringhe divise da s e lo metto in buf tutto segmentato
 			int k = atoi(buff); //i prende il numero di sequenza nell'headewr del pacchetto
 			seq=k;//seq prende il numero di sequenza nell'headewr del pacchetto
-			
+			printf("\n\nMI ASPETTO PACK %d\n\n",num);
 			if(seq!=num){
 				printf("Pacchetto %d ricevuto fuori ordine, ora lo scarto\n",seq);
 				if(sendACK(num-1,WINDOW_SIZE)){//invio l'ack del pacchetto antecedente a quello che mi sarei aspettato
@@ -344,7 +349,8 @@ void recive_UDP_GO_BACK_N(){
 			if(seq >= count){
 				count = seq + 1;
 			}
-			printf("Ho ricevuto il pacchetto %d\n",seq);
+			printf("\t\t\t\tHo ricevuto il pacchetto %d\n",seq);
+			
 			/*
 			La funzione restituisce la sottostringa del pacchetto -> PASSA MALE IL CONTENUTO
 			contentente il messaggio vero e proprio
@@ -357,28 +363,30 @@ void recive_UDP_GO_BACK_N(){
 			char *substr = (char *)calloc(1, end - start + 1);
 			memcpy(substr, start, end - start);
 			pckt_rcv_parsed = substr;//pckt_rcv_parsed ha la stringa del pacchetto
-			
+			printf("----------------------------------------------CONTENUTO PACK %d-esimo:----------------------------------------------\n%s\n:------------------------------------------------------------------------------------------------------------------------------------------\n",seq,pckt_rcv_parsed);
 			/*Ora devo mandare gli ack */
 			if(sendACK(seq,WINDOW_SIZE)){
 			counter = counter + 1;
 				// copia del contenuto del pacchetto nella struttura ausiliaria
-				printf("CONTENUTO PACK %s\n",pckt_rcv_parsed);
+				
 				if(strcpy(pacchett[seq].buf, pckt_rcv_parsed) == NULL){
 					exit(-1);
 				}
 				if (strcpy(buff_file[seq], pacchett[seq].buf) == NULL){
 					exit(-1);
 				}
-				printf("\tPacchetto ricevuto numero di seq: %d.\n", seq);	
-				num++;//incremento il contatore che mi identifica se il pack è in ordine				
+				printf("Pacchetto riscontrato numero di seq: %d.\n\n", seq);	
+				//incremento il contatore che mi identifica se il pack è in ordine		
+				num=seq+1;
 			}
 			else{
 				NOOK:
+				printf("Pacchetto NON riscontrato numero di seq: %d.\n", seq);
 				goto CICLO;
-				printf("\tPacchetto NON ricevuto numero di seq: %d.\n", seq);
+				
 			}
 			FINE:
-			printf("");	
+			printf(" ");	
 			}		
 	}
 	return;
@@ -392,7 +400,7 @@ per cui voglio dare un riscontro
 int sendACK(int seq,int WINDOW_SIZE){
 	int loss_prob;
 	bzero(buffer, SIZE_MESSAGE_BUFFER);
-	sprintf(buffer, "%d", seq);
+	sprintf(buffer, "%d", seq);/*
 	if(seq > packet_count-WINDOW_SIZE-1)
 	{
 		loss_prob = 0;
@@ -403,20 +411,20 @@ int sendACK(int seq,int WINDOW_SIZE){
 	}
 	float ran = (float) random() / RAND_MAX;
 	ran = ran*100;
-	if(ran < (100 - loss_prob)) {	
+	if(ran < (100 - loss_prob)) {*/	
 		err = sendto(sockfd, buffer, 32, 0, (SA *) &servaddr, len);
 		printf("Sto inviando l'ACK: %d.\n", seq);
-		if(err < 0){
-			error("Errore nella sendto della sendACK del server.");
-		}
+		/*if(err < 0){
+			herror("Errore nella sendto della sendACK del server.");
+		}*/
 		return 1;
-	}
+	}/*
 	else
 	{
 		printf("simulazione pacchetto perso, ack: %d non inviato\n",seq);
 		return 0;
 	}
-}
+}*/
 
 
 
@@ -431,11 +439,11 @@ void receive_data(){
 		{
 			goto START_RECEIVE_LEN;
 		}
-		error("Errore nella recvfrom della receive_name_and_len_file del server.");
+		herror("Errore nella recvfrom della receive_name_and_len_file del server.");
 	}
 	/*Lo copio in un buffer*/
 	if(strcpy(pathname, buffer) == NULL){
-		error("Errore nella strncpy della receive_name_and_len_file del server.");
+		herror("Errore nella strncpy della receive_name_and_len_file del server.");
 	}
 	bzero(buffer, SIZE_MESSAGE_BUFFER);
 	/*
@@ -445,7 +453,7 @@ void receive_data(){
 	/*Attendo la lunghezza del file*/
 	err = recvfrom(sockfd, buffer, SIZE_MESSAGE_BUFFER, 0, (SA *) &servaddr, &len);
 	if(err < 0){
-		error("Errore nella recvfrom della receive_len_file del server.");
+		herror("Errore nella recvfrom della receive_len_file del server.");
 	}
 	int dim_file=atoi(buffer);
 	printf("Ho ricevuto un file di lunghezza :%d\n",dim_file);
@@ -455,10 +463,8 @@ void receive_data(){
 	Mediante la chiamata ceil:
 	La funzione restituisce il valore integrale più piccolo non inferiore a x .
 	*/
-	int len_file = atoi(buffer);
-	printf("Lunghezza file: %d.\n", len_file);
-	buff_file = malloc(len_file);
-	packet_count = (ceil((len_file/SIZE_PAYLOAD))) + 1;
+	packet_count = (ceil((dim_file/SIZE_PAYLOAD))) + 1;
+	printf("Numero pacchetti da ricevere: %d.\n", packet_count);
 	/*
 	Utilizzo questa tecnica per capire quanti pacchetti dovrò ricevere
 	Alla fine della procedura avro a disposizione sia il nome del file e la sua lunghezza
@@ -466,14 +472,14 @@ void receive_data(){
    	for(int i = 0; i < packet_count; i++){
     	buff_file[i] = mmap(NULL, SIZE_PAYLOAD, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_SHARED, 0, 0);
     	if(buff_file[i] == NULL){
-			error("Errore nella mmap del buff_file della receive_name_and_len_file del server.");
+			herror("Errore nella mmap del buff_file della receive_name_and_len_file del server.");
 		}
     }
-    printf("Numero pacchetti da ricevere: %d.\n", packet_count);
+    
 	/*Copio il contenuto in un nuovo file man mano che ricevo pacchetti*/
 	int file = open(pathname, O_CREAT|O_RDWR, 0666);
 	if(file == -1){
-		error("Errore nella open in create_local_file del server.");
+		herror("Errore nella open in create_local_file del server.");
 	}
 	printf("Ho creato il file.\n");
 	printf("Inizio a ricevere i pacchetti con GO-BACK-N\n");
@@ -486,7 +492,7 @@ void receive_data(){
 	for(int i = 0; i < packet_count; i++){
 		int ret = write(file, buff_file[i], SIZE_PAYLOAD);
 		if(ret == -1){
-			error("Errore nella write della write_data_packet_on_local_file del server.");
+			herror("Errore nella write della write_data_packet_on_local_file del server.");
 		}
 	}
 	printf("File scritto correttamente.\n");
@@ -497,6 +503,7 @@ void receive_data(){
 	fprintf(f, "\n%s", pathname); 
 	printf("File aggiornato correttamente.\nOperazione di upload completata con successo.\n");
 	//printf("Operazione di upload completata con successo.\n");
+	return;
 }
 	
 
@@ -587,7 +594,7 @@ void func_exit(int client_port, int socket_fd, pid_t pid){
 	printf("Chiudo la connessione verso la porta: %d.\n", client_port);
 	int ret = close(socket_fd);
 	if(ret == -1){
-		error("Errore nella chiusura della socket verso la porta %d.",client_port);
+		herror("Errore nella chiusura della socket\n");
 	}
 	*numeri_di_porta[client_port-PORT-1]=client_port;
 	kill(pid, SIGUSR1);	

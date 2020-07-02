@@ -38,6 +38,9 @@ struct packet_struct{
 
 /*Dichiarazioni funzioni*/
 void func_list(int, struct sockaddr_in, socklen_t);
+int create_socket(int);
+
+
 
 
 
@@ -120,7 +123,7 @@ int main() {
 	//Ciclo infinito di richieste
 	while(1){
 		if(atoi(buffer) == CODICE){
-				error("ATTENZIONE! Il server non è più in funzione.");
+				perror("ATTENZIONE! Il server non è più in funzione.");
 				return 1;
 			}
 		//Faccio una pulizia preliminare del buffer
@@ -157,22 +160,22 @@ int main() {
 			//Invio al server cosa voglio fare
 			err = sendto(sockfd, buffer, sizeof(buffer), 0, (SA *) &servaddr, len);
 			if (err < 0){
-				error("Errore nella sendto nella sezione del servizio di upload del client.");
+				perror("Errore nella sendto nella sezione del servizio di upload del client.");
 			}
 			/*Attendo che il Server mi dia il permesso per proseguire*/
 			bzero(buffer, SIZE_MESSAGE_BUFFER);
 			err = recvfrom(sockfd, buffer, sizeof(buffer), 0, (SA *) &servaddr, &len);
 			if (err < 0){
-				error("Errore nella recvfrom nella sezione del servizio di upload del client.");
+				perror("Errore nella recvfrom nella sezione del servizio di upload del client.");
 			}
 			/*Scelgo il file da inviare*/
 			int file,dim;
 			int counter=0;
 			int seq = 0;
 			file=open("lista_c.txt",O_RDONLY,0666);
-			if(open==-1){
+			if(open==NULL){
 				printf("Errore apertura file\n");
-				return;
+				return 0;
 			}
 			if(file<0){printf("Errore apertura lista dei file");}
 			/*Vedo la lunghezza complessiva del file*/
@@ -208,7 +211,7 @@ int main() {
 			/*Invio il nome del file al server*/
 			sendto(sockfd, file_name, sizeof(file_name), 0, (SA *) &servaddr, len);
 			if (err < 0){
-				error("Errore nella sendto della get_name_and_size_file del client.");
+				perror("Errore nella sendto della get_name_and_size_file del client.");
 			}
 			
 			
@@ -219,10 +222,10 @@ int main() {
 			lseek(file_inv, 0, 0);
 			bzero(buffer, SIZE_MESSAGE_BUFFER);
 			/*Inserisco la dimensione effettiva delf ile nel buffer e la mando al server */
-			sprintf(buffer, "%d", size);
+			sprintf(buffer, "%d", dim);
 			/*Invio la dimensione del file*/
 			if (sendto(sockfd, buffer, SIZE_MESSAGE_BUFFER, 0, (struct sockaddr *) &servaddr, len) <0){
-				error("Errore nella sento della send_len_file del client.");
+				perror("Errore nella sento della send_len_file del client.");
 			}			
 			
 			/*Inizio il caricamento del file*/
@@ -281,9 +284,7 @@ int main() {
 					seq = send_packet_GO_BACK_N(file_struct, seq, WINDOW_SIZE);//mando la struttura contenente i pacchetti, la sequenza, e la dimensione della finestra
 				}
 			}
-			
-			
-			
+			bzero(buffer, SIZE_MESSAGE_BUFFER);
 		}
 		
 		//CASO DOWNLOAD
@@ -354,6 +355,7 @@ int send_packet_GO_BACK_N(struct packet_struct *file_struct, int seq, int offset
 	/*Ciclo for che invia WINDOWS_SIZE pacchetti alla volta*/
 	int lock=0;
 	int i=0;
+	printf("\n------------------------------------------------------------------------\n");
 	for(i = 0; i < offset; i++){	
 		RESTART:
 		//imposto l'ack dei N pacchetti che sto inviando come 0, lo metterò a 1 una volta ricevuto l'ack complessivo dal client
@@ -364,14 +366,15 @@ int send_packet_GO_BACK_N(struct packet_struct *file_struct, int seq, int offset
 			fprintf(stderr, "Errore nell'invio del pacchetto numero: %d.\n", seq);
 			exit(EXIT_FAILURE);
 		}
-		printf("Pacchetto [%d] inviato attendo il riscontro\n",seq+i);
+		printf("Pacchetto [%d] inviato\n",seq+i);
 		// pulisco il buffer
 		bzero(buffer, SIZE_MESSAGE_BUFFER);
 		
 	}
+	printf("\n------------------------------------------------------------------------\n");
 	//Attendo ack dei tre pacchetti
 	for(int j = 0; j < offset; j++){
-		printf("Attendo ACK [%d]  \n",seq+j);
+		printf("Attendo ACK [%d]  \n",seq);
 		int err = recvfrom(sockfd,buffer, SIZE_MESSAGE_BUFFER, 0, (SA *) &servaddr, &len);
 		
 		/*Caso perdo il pacchetto*/
@@ -381,15 +384,15 @@ int send_packet_GO_BACK_N(struct packet_struct *file_struct, int seq, int offset
 				Nel caso viene perso un pacchetto mi sposto di nuovo dentro il ciclo for, permettendo di nuovo l'invio dei pacchetti non riscontrati
 				*/
 				FUORIORDINE:
-				lock = 1;
-				printf("il pacchetto è andato perso o ricevuto fuori ordine, ack: %d non ricevuto\n",seq);
-				i=seq;//Utile per impostare l'indice nel ciclo for
-				seq=seq-i;
+					lock = 1;
+					printf("il pacchetto è andato perso o ricevuto fuori ordine, ack: %d non ricevuto\n",seq);
+					i=seq;//Utile per impostare l'indice nel ciclo for
+					seq=seq-i;
 				goto RESTART;
 				}
 		
 			else{
-				error("Errore nella recvfrom della send_packet del server.");
+				perror("Errore nella recvfrom della send_packet del server.");
 			}
 		}
 		/*Caso prendo il pacchetto*/
@@ -398,6 +401,7 @@ int send_packet_GO_BACK_N(struct packet_struct *file_struct, int seq, int offset
 			// è una variabile che assume il valore del numero ricevuto 
 			// con l'ack, che è proprio il numero corrispondente al pacchetto, 
 			// ora imposto l'ack a 1
+			
 			int check = atoi(buffer);//Prendo l'id del pacchetto riscontrato dal server
 			if(check >= 0){
 				file_struct[check].ack = 1; //Imposto l'ack del pacchetto uguale a 1, indicando che tale pack è stato riscontrato
@@ -405,7 +409,12 @@ int send_packet_GO_BACK_N(struct packet_struct *file_struct, int seq, int offset
 			if(check!=num){
 				goto FUORIORDINE;
 			}
-			seq=seq+check+1; //Quello successivo a quello riscontrato correttamente, cioè quello da inviare di nuovo in caso di perdita
+			if(seq==0){
+				seq=seq+check+1;
+			}
+			else{
+				seq=check+1;
+			}			//Quello successivo a quello riscontrato correttamente, cioè quello da inviare di nuovo in caso di perdita
 			num++;
 			/*Controllo se ho avuto perdita, nel caso ritrasmettoa a partire dall'ultimo riscontrato*/
 		}
