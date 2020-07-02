@@ -52,6 +52,7 @@ int WINDOW_SIZE=3;
 int packet_count; 	// numero di pacchetti da inviare
 char **buff_file;
 char pathname[1024];
+int num=0;//contatore utile per verificare l'ordine dei pacchetti
 int **numeri_di_porta;
 int num_port[MAX_CONNECTION];
 void *exit_t();
@@ -269,18 +270,23 @@ Il server in questo caso dovrebbe scartare i pacchetti
 fuori sequenza e mandare ack complessivi, oppure in caso di pacchetto fuori ordine l'ultimo ack riccevuto
 */
 void recive_UDP_GO_BACK_N(){
-	
+	/*
+	Il server conoscendo la windows size, la dimensione per ogni pack, e la grandezza del file, può calcolarsi
+	quante ondate di pacchetti "normali" e "diversi" arriveranno dal client
+	*/
 	int seq,timer; //dorvò scegliere opportunamente il timer di scadenza
 	int count = 0;
 	int counter = 0;
-	struct pacchetto pacchett[packet_count];
+	struct pacchetto pacchett[packet_count];//Creo la struttura per contenere i pacchetti
 	int offset = packet_count%WINDOW_SIZE; //indica quante ondate di pacchetti devo ricevere 
-	int w_size=WINDOW_SIZE;
+	int w_size=WINDOW_SIZE;//w_size prende la dimensione dell WINDOW_SIZE per poi riadattarla in caso di pack "diversi"
 	/*Vado nel ciclo finche non termino i pacchetti*/
 	while(count < packet_count||counter<packet_count-1){
-		//inizio a ricevere pacchetti
-		// entriamo in questo ciclo solo nel caso in cui rimangono al piu offset pacchetti, 
-		// di conseguenza la dimensione della nostra finestra diventa offset
+		/*Inizio a ricevere pacchetti*/
+		/*
+		Entriamo in questo ciclo solo nel caso in cui rimangono al piu offset pacchetti, 
+		di conseguenza la dimensione della nostra finestra diventa offset
+		 */
 		if(packet_count-count <= offset + 1 && offset!=0){
 			if(WINDOW_SIZE%2){
 				w_size = offset;
@@ -290,9 +296,15 @@ void recive_UDP_GO_BACK_N(){
 				w_size = offset +1;
 			}
 		}
+		
+		/*
+		1)w_size ha dimensione WINDOW_SIZE nel caso di pach "normali" 
+		2)w_size ha dimensione offset nel caso di pach "diversi" 
+		*/
+		
 		for(int i = 0; i < w_size; i++){
 			CICLO:
-			printf("%d)Sono nel for\n",i);
+			printf("%d)Sono nel ciclo di riscontro dei pacchetti\n",i);
 			char pckt_rcv[SIZE_MESSAGE_BUFFER];
 			char *pckt_rcv_parsed;
 			pckt_rcv_parsed = malloc(SIZE_PAYLOAD);
@@ -309,29 +321,44 @@ void recive_UDP_GO_BACK_N(){
 					error("Errore nella recvfrom della recive_UDP_rel_file nel client");
 				}
 			}
+			
 			// buff riceve il numero di sequenza messo nel header del pacchetto
 			char *buff;
 			const char s[2] = " ";
 			buff = strtok(pckt_rcv, s);//divido il pacchetto in piu stringhe divise da s e lo metto in buf tutto segmentato
-			int i = atoi(buff); //i prende il numero di sequenza nell'headewr del pacchetto
-			seq=i;
+			int k = atoi(buff); //i prende il numero di sequenza nell'headewr del pacchetto
+			seq=k;//seq prende il numero di sequenza nell'headewr del pacchetto
+			
+			if(seq!=num){
+				printf("Pacchetto %d ricevuto fuori ordine, ora lo scarto\n",seq);
+				if(sendACK(num-1,WINDOW_SIZE)){//invio l'ack del pacchetto antecedente a quello che mi sarei aspettato
+					goto CICLO;
+				}
+				else{
+					goto NOOK;
+				}
+			
+			}
+			
+			
 			if(seq >= count){
 				count = seq + 1;
 			}
+			printf("Ho ricevuto il pacchetto %d\n",seq);
 			/*
 			La funzione restituisce la sottostringa del pacchetto -> PASSA MALE IL CONTENUTO
 			contentente il messaggio vero e proprio
 			*/
 			char *c_index;
-			sprintf(c_index, "%d", index);
+			sprintf(c_index, "%d", seq);
 			int st = strlen(c_index) + 1;
 			char *start = &pckt_rcv[st];
 			char *end = &pckt_rcv[SIZE_MESSAGE_BUFFER];
 			char *substr = (char *)calloc(1, end - start + 1);
 			memcpy(substr, start, end - start);
-			pckt_rcv_parsed = substr;
+			pckt_rcv_parsed = substr;//pckt_rcv_parsed ha la stringa del pacchetto
 			
-			/*Ora devo mandare gli ack*/
+			/*Ora devo mandare gli ack */
 			if(sendACK(seq,WINDOW_SIZE)){
 			counter = counter + 1;
 				// copia del contenuto del pacchetto nella struttura ausiliaria
@@ -342,15 +369,17 @@ void recive_UDP_GO_BACK_N(){
 				if (strcpy(buff_file[seq], pacchett[seq].buf) == NULL){
 					exit(-1);
 				}
-				printf("\tPacchetto ricevuto numero di seq: %d.\n", seq);				
+				printf("\tPacchetto ricevuto numero di seq: %d.\n", seq);	
+				num++;//incremento il contatore che mi identifica se il pack è in ordine				
 			}
 			else{
+				NOOK:
 				goto CICLO;
 				printf("\tPacchetto NON ricevuto numero di seq: %d.\n", seq);
 			}
 			FINE:
 			printf("");	
-		}		
+			}		
 	}
 	return;
 }
@@ -442,8 +471,8 @@ void receive_data(){
     }
     printf("Numero pacchetti da ricevere: %d.\n", packet_count);
 	/*Copio il contenuto in un nuovo file man mano che ricevo pacchetti*/
-	int fd = open(pathname, O_CREAT|O_RDWR, 0666);
-	if(fd == -1){
+	int file = open(pathname, O_CREAT|O_RDWR, 0666);
+	if(file == -1){
 		error("Errore nella open in create_local_file del server.");
 	}
 	printf("Ho creato il file.\n");
@@ -453,7 +482,14 @@ void receive_data(){
 	
 	/*penspo che manca la scrittur nel file fd*/
 	
-	
+	printf("Scrivo il file...\n");
+	for(int i = 0; i < packet_count; i++){
+		int ret = write(file, buff_file[i], SIZE_PAYLOAD);
+		if(ret == -1){
+			error("Errore nella write della write_data_packet_on_local_file del server.");
+		}
+	}
+	printf("File scritto correttamente.\n");
 	/*Aggiorno la lista dei file*/
 	printf("Aggiorno file_list...\n");
 	FILE *f;
