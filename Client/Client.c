@@ -48,7 +48,7 @@ void setTimeout(double,int);
 /*Variabili globali*/
 int si; //utile per il riscontro dei pack
 int num=0; //per vedere i pack fuori ordine
-struct timers t;//Struttura per calcolare il tempo trascorso
+struct timeval t;//Struttura per calcolare il tempo trascorso
 struct sockaddr_in servaddr;// struct di supporto della socket
 socklen_t len;//Lunghezza della struct della socket
 char file_name[128];	//Buffer per salvare il nome del file
@@ -478,7 +478,7 @@ int send_packet_GO_BACK_N(struct inside_the_package *file_struct, int seq, int o
 
 /*Questa funzione serve per settare un tempo alla richiesta della socket*/
 void setTimeout(double time,int id) {
-	struct timers timeout;
+	struct timeval timeout;
     timeout.tv_sec = 0;
     timeout.tv_usec = time;
     setsockopt(socketone, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
