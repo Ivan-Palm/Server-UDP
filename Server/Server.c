@@ -313,11 +313,12 @@ void recive_UDP_GO_BACK_N(){
 		printf("\nW_SIZE: %d\n\n",WINDOW_SIZE);
 		for(int i = 0; i <w_size; i++){
 			CICLO:
+			bzero(buffer, SIZE_MESSAGE_BUFFER);
 			printf(" ");
 			char pckt_rcv[SIZE_MESSAGE_BUFFER];
 			char *pckt_rcv_parsed;
 			pckt_rcv_parsed = malloc(SIZE_PAYLOAD);
-			/*ricevo pacchetto*/
+			/*attesa pacchetto*/
 			int err = recvfrom(sockfd, pckt_rcv, SIZE_MESSAGE_BUFFER, 0, (SA *) &servaddr, &len);
 			if (err < 0){
 				if(errno == EAGAIN)
@@ -339,8 +340,8 @@ void recive_UDP_GO_BACK_N(){
 			seq=k;//seq prende il numero di sequenza nell'headewr del pacchetto
 			printf("\n\nMI ASPETTO PACK %d\n\n",num);
 			if(seq!=num){
-				printf("Pacchetto %d ricevuto fuori ordine, ora lo scarto\n",seq);
-				if(sendACK(receive,WINDOW_SIZE)){//invio l'ack del pacchetto antecedente a quello che mi sarei aspettato
+				printf("Pacchetto %d ricevuto fuori ordine, ora lo scarto e rimando l'ack di %d\n",seq,(receive-1));
+				if(sendACK((receive-1),WINDOW_SIZE)){//invio l'ack del pacchetto antecedente a quello che mi sarei aspettato
 					goto CICLO;
 				}
 				else{
@@ -354,7 +355,7 @@ void recive_UDP_GO_BACK_N(){
 				count = seq + 1;
 			}
 			printf("\t\t\t\tHo ricevuto il pacchetto %d\n",seq);
-			receive++; //indico che è lui il nuovo pacchetto ricevuto
+			 //indico che è lui il nuovo pacchetto ricevuto
 			/*
 			La funzione restituisce la sottostringa del pacchetto -> PASSA MALE IL CONTENUTO
 			contentente il messaggio vero e proprio
@@ -367,11 +368,12 @@ void recive_UDP_GO_BACK_N(){
 			char *substr = (char *)calloc(1, end - start + 1);
 			memcpy(substr, start, end - start);
 			pckt_rcv_parsed = substr;//pckt_rcv_parsed ha la stringa del pacchetto
-			printf("----------------------------------------------CONTENUTO PACK %d-esimo:----------------------------------------------\n%s\n:------------------------------------------------------------------------------------------------------------------------------------------\n",seq,pckt_rcv_parsed);
+			printf("----------------------------------------------------------CONTENUTO PACK %d-esimo:----------------------------------------------------\n%s\n:------------------------------------------------------------------------------------------------------------------------------------------\n",seq,pckt_rcv_parsed);
 			
 			/*Ora devo mandare gli ack */
 			if(sendACK(seq,WINDOW_SIZE)){
 			counter = counter + 1;
+			receive++;
 				// copia del contenuto del pacchetto nella struttura ausiliaria
 				if(strcpy(pacchett[seq].buf, pckt_rcv_parsed) == NULL){
 					exit(-1);
@@ -417,7 +419,8 @@ int sendACK(int seq,int WINDOW_SIZE){
 	printf("Numero random scelto: %d\n",ran);
 	if(ran < (100 - loss_prob)) {
 		printf("Sto inviando l'ACK: %d.\n", seq);
-		err = sendto(sockfd, buffer, 32, 0, (SA *) &servaddr, len);
+		err = sendto(sockfd, buffer, SIZE_MESSAGE_BUFFER, 0, (SA *) &servaddr, len);
+		bzero(buffer, SIZE_MESSAGE_BUFFER);
 		if(err < 0){
 			herror("Errore nella sendto della sendACK del server.");
 		}
@@ -425,7 +428,7 @@ int sendACK(int seq,int WINDOW_SIZE){
 	}
 	else
 	{
-		printf("simulazione pacchetto perso, ack: %d non inviato\n",seq);
+		bzero(buffer, SIZE_MESSAGE_BUFFER);
 		return 0;
 	}
 }
