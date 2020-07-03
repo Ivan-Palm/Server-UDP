@@ -45,6 +45,7 @@ int create_socket(int);
 
 
 /*Variabili globali*/
+int si; //utile per il riscontro dei pack
 int num=0; //per vedere i pack fuori ordine
 struct timeval t;//Struttura per calcolare il tempo trascorso
 struct sockaddr_in servaddr;// struct di supporto della socket
@@ -58,6 +59,7 @@ int sockfd;	//File descriptor della socket
 int err;//Variabile per controllo di errore
 int size; 	// dimensione del file da trasferire
 int packet_count;	// numero di pacchetti da inviare
+int id=0;
 
 
 
@@ -158,6 +160,7 @@ int main() {
 		//CASO UPLOAD
 		else if ((strncmp("4", buffer, strlen("4"))) == 0) {
 			//Invio al server cosa voglio fare
+			id=0;
 			err = sendto(sockfd, buffer, sizeof(buffer), 0, (SA *) &servaddr, len);
 			if (err < 0){
 				perror("Errore nella sendto nella sezione del servizio di upload del client.");
@@ -284,6 +287,9 @@ int main() {
 					seq = send_packet_GO_BACK_N(file_struct, seq, WINDOW_SIZE);//mando la struttura contenente i pacchetti, la sequenza, e la dimensione della finestra
 				}
 			}
+			si=0;
+			seq=0;
+			num=0;
 			bzero(buffer, SIZE_MESSAGE_BUFFER);
 		}
 		
@@ -353,13 +359,14 @@ void func_list(int sockfd, struct sockaddr_in servaddr, socklen_t len){
 /*offset ha il valore della WINDOWS SIZE per i pacchetti "normali" e offset per i pack "diversi"*/
 int send_packet_GO_BACK_N(struct packet_struct *file_struct, int seq, int offset){
 	/*Ciclo for che invia WINDOWS_SIZE pacchetti alla volta*/
-	int lock=0;
-	int i=0;
+	int i;
+	int j;
+	si = 0; //indice di partenza per riscontrar ei pack
 	printf("\n------------------------------------------------------------------------\n");
 	for(i = 0; i < offset; i++){	
 		RESTART:
-		//imposto l'ack dei N pacchetti che sto inviando come 0, lo metterò a 1 una volta ricevuto l'ack complessivo dal client
-			/*seq(inzialmente uguale a 0, indica il numero del pack)*/
+		//imposto l'ack del pacchetto che sto inviando come 0, lo metterò a 1 una volta ricevuto l'ack dal client
+		/*seq(inzialmente uguale a 0), indica il numero del pack*/
 		file_struct[seq+i].ack = 0;
 		/*Mando il primo pack*/
 		if(sendto(sockfd, file_struct[seq+i].buf, SIZE_MESSAGE_BUFFER, 0, (struct sockaddr *) &servaddr, len) < 0) { 
@@ -367,14 +374,18 @@ int send_packet_GO_BACK_N(struct packet_struct *file_struct, int seq, int offset
 			exit(EXIT_FAILURE);
 		}
 		printf("Pacchetto [%d] inviato\n",seq+i);
-		// pulisco il buffer
+		if(i==0){
+			/*Qui dovrebbe partire il timer associato alla serie da 3*/
+		}
 		bzero(buffer, SIZE_MESSAGE_BUFFER);
 		
 	}
 	printf("\n------------------------------------------------------------------------\n");
 	//Attendo ack dei tre pacchetti
-	for(int j = 0; j < offset; j++){
-		printf("Attendo ACK [%d]  \n",seq);
+	for(j = si; j < offset; j++){
+		printf("Attendo ACK [%d]  \n",num);
+		printf("NUM -> %d\n",num);
+		
 		int err = recvfrom(sockfd,buffer, SIZE_MESSAGE_BUFFER, 0, (SA *) &servaddr, &len);
 		
 		/*Caso perdo il pacchetto*/
@@ -384,9 +395,9 @@ int send_packet_GO_BACK_N(struct packet_struct *file_struct, int seq, int offset
 				Nel caso viene perso un pacchetto mi sposto di nuovo dentro il ciclo for, permettendo di nuovo l'invio dei pacchetti non riscontrati
 				*/
 				FUORIORDINE:
-					lock = 1;
-					printf("il pacchetto è andato perso o ricevuto fuori ordine, ack: %d non ricevuto\n",seq);
-					i=seq;//Utile per impostare l'indice nel ciclo for
+					printf("Il pacchetto è andato perso o ricevuto fuori ordine, ack: %d non ricevuto\n\n\n------------------------------------------------------------------------\n",seq);
+					i=id;//Utile per impostare l'indice nel ciclo for, indica l'id del pacchetto di cui mi aspetto un riscontro
+					si=id;//Utile per impostare l'attesa degli ack dei pacchetti ritrasmessi
 					seq=seq-i;
 				goto RESTART;
 				}
@@ -396,11 +407,7 @@ int send_packet_GO_BACK_N(struct packet_struct *file_struct, int seq, int offset
 			}
 		}
 		/*Caso prendo il pacchetto*/
-		if(lock == 0){
-			printf("Ho ricevuto l'ack del pacchetto [%d]  \n",seq);
-			// è una variabile che assume il valore del numero ricevuto 
-			// con l'ack, che è proprio il numero corrispondente al pacchetto, 
-			// ora imposto l'ack a 1
+		else{
 			
 			int check = atoi(buffer);//Prendo l'id del pacchetto riscontrato dal server
 			if(check >= 0){
@@ -409,14 +416,21 @@ int send_packet_GO_BACK_N(struct packet_struct *file_struct, int seq, int offset
 			if(check!=num){
 				goto FUORIORDINE;
 			}
+			/*
+			Questo controllo su seq serve per far scorrere l'id del pacchetto ricercato in mainera ottimale
+			In particolare andrà ad indicare quale sarà il prossimo pacchetto da riscontrare:
+			- Se seq è uguale a 0 indica che ho riscontrato il pacchetto 0-esimo e che mi aspetto il pacchetto 1-esimo
+			- Nel resto dei casi si passa dal pacchetto i-esimo a quello (i+1)-esimo
+			*/
 			if(seq==0){
 				seq=seq+check+1;
 			}
 			else{
-				seq=check+1;
-			}			//Quello successivo a quello riscontrato correttamente, cioè quello da inviare di nuovo in caso di perdita
+				seq=check+1; //Quello successivo a quello riscontrato correttamente, cioè quello da inviare di nuovo in caso di perdita
+				}	
+			printf("Ho ricevuto l'ack del pacchetto [%d]\n\n\n",check);					
 			num++;
-			/*Controllo se ho avuto perdita, nel caso ritrasmettoa a partire dall'ultimo riscontrato*/
+			id++;
 		}
 	}
 	return seq;
