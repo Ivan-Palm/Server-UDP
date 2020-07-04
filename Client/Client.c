@@ -198,12 +198,12 @@ int main() {
 			
 			/*Lettura dei della lista dei file caricabili sul server*/
 			read(file,lista_dei_files, dimensione);
-			printf("Lista dei file: \n%s\n",lista_dei_files);
+			printf("--------------------------------------------------[LISTA DEI FILE NEL CLIENT]---------------------------------------------------\n\t\t\t%s\n",lista_dei_files);
 			
 			/*Scelta del file*/
 			bzero(buffer, DIMENSIONE_MESSAGGI);
 			SCELTA:
-			printf("Scegli il file inserendo il suo nome per intero(compreso di .txt):\t");
+			printf("Scegli il file inserendo il suo nome per intero(compreso di .txt): ");
 			fgets(buffer, DIMENSIONE_MESSAGGI,stdin);// catturo la stringa passata come parametro da standard input
 			close(file);//chiudo lo stream verso il file
 			bzero(file_name,128);//pulisco il buffer contenente il nome del file
@@ -277,7 +277,7 @@ int main() {
 			
 			/*Da qui in poi ho tutti i pacchetti salvati nella struttura*/
 			printf("Ho caricato i pacchetti nella struttura\n");
-			printf("------------------------------------------------[FASE DI SCAMBIO]------------------------------------------------\n");
+			printf("--------------------------------------------------[FASE DI SCAMBIO]---------------------------------------------------\n");
 			/*Fase di invio dei pacchetti*/
 			
 			/*Vedo quanti pacchetti non sono multipli della windows dimensione*/
@@ -300,7 +300,7 @@ int main() {
 				
 				/*Controllo se ho finito di mandare gia i pacchetti a causa di ritrasmissioni*/
 				if(seq>=num_pacchetti){
-						printf("------------------------------------------------[FINE FASE DI UPLOAD]------------------------------------------------\n");
+						printf("----------------------------------------------------[FINE FASE DI UPLOAD]----------------------------------------------------\n");
 						goto FINISH;
 				}
 				/*Nel caso ne rimangano alcuni, li invio*/
@@ -380,7 +380,7 @@ void lista_dei_file(int socketone, struct sockaddr_in servaddr, socklen_t len){
 	/*attesa rispsta del server*//*restituira dentro buffer la lista degliu elementi disponibili*/
 	bzero(buffer,DIMENSIONE_MESSAGGI);
 	recvfrom(socketone,buffer,sizeof(buffer),0,(SA *) &servaddr, &len);
-	printf("--------------------------------\nLista dei file disponibili nel server:\n%s\n--------------------------------", buffer);
+	printf("--------------------------------------------------[LISTA DEI FILE NEL CLIENT]---------------------------------------------------\n%s\n---------------------------------------------------------------------------------------------------------------------------------\n", buffer);
 }
 	
 	
@@ -394,7 +394,7 @@ int send_packet_GO_BACK_N(struct inside_the_package *file_struct, int seq, int o
 	int j;
 	si = 0; //indice di partenza per riscontrar ei pack
 	int timer=1; //utile per far partire il timer solo del primo pacchetto
-	printf("\n------------------------------------------------------------------------\n");
+	printf("\n--------------------------------------------------------------------------------------------------------\n");
 	/*Ciclo for che invia offset pacchetti alla volta*/
 	for(i = 0; i < offset; i++){	
 		//imposto l'ack del pacchetto che sto inviando come 0, lo metterò a 1 una volta ricevuto l'ack dal client
@@ -414,7 +414,7 @@ int send_packet_GO_BACK_N(struct inside_the_package *file_struct, int seq, int o
 		bzero(buffer, DIMENSIONE_MESSAGGI);
 		
 	}
-	printf("\n------------------------------------------------------------------------\n");
+	printf("\n--------------------------------------------------------------------------------------------------------\n");
 	/*Entro nella fase di attesa dei riscontri dei pacchetti*/
 	for(j = si; j < offset; j++){
 		printf("Attendo ACK [%d]\n",seq+si);

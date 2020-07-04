@@ -17,7 +17,7 @@
 #include<sys/ipc.h>
 #include<sys/shm.h>
 #include<pthread.h>
-#include <c_errorno.h>
+#include <errno.h>
 
 
 /*Valori definiti preliminarmente*/
@@ -43,6 +43,10 @@ void f_upload(int , struct sockaddr_in , socklen_t );
 void reception_data();
 int sendACK(int ,int );
 int creazione_socket(int);
+int num_random();
+int chiudi_socket(int);
+void show_port();
+int decrement_client(int*);
 
 
 /*strutture*/
@@ -61,13 +65,13 @@ char **buff_file;
 char pathname[1024];
 int num=0;//contatore utile per verificare l'ordine dei pacchetti
 int **numeri_di_porta;
+int *utenti_connessi;
 int num_port[CONNESSIONI];
 void *exit_t();
 char *buff_file_list; //Buffer per il contenuto della lista di file
 char buffer[MAX_DIM_MESSAGE]; //Buffer per comunicare con i client
 int s_socketone;//File descriptor della socket per i child
 pid_t parent_pid; //PID del parent nel main
-int client_num=0;//Numero dei client, inizialmente impostato a 0
 int size; //Dimensione del file da trasferire
 struct sockaddr_in servaddr;//Struct di supporto della socket
 socklen_t len;//Lunghezza della struct della socket
@@ -79,14 +83,17 @@ int c_error; 	// intero per il controllo della gestione d'c_errorore
 
 
 
+int decrement_client(int *utenti_connessi){
+	*utenti_connessi=*utenti_connessi-1;
+	return *utenti_connessi;
+}
 
 
-int main(){
-
-	//imposto i segnali
-	signal(SIGCHLD,(void*)exit_t);
-
-	
+/*
+Questa funzione serve per mostrare al server quali porte ha libere, e di conseguenza quanti utenti possono
+ancora accedervi senza creare una sovraffolazione
+*/
+void show_port(){
 	/*Creo un array di interi accessibile da piu processi, col fine di capire quale porte sono libere o meno*/
 	numeri_di_porta=malloc((CONNESSIONI*sizeof(int*)));
 	if(numeri_di_porta==NULL){
@@ -111,9 +118,33 @@ int main(){
 	/*Inizializzo la sharedmemory per salvare i process-id dei child*/
 	shmid = shmget(IPC_PRIVATE, sizeof(int)*CONNESSIONI, IPC_CREAT|0666);
 	if(shmid == -1){
-		hc_erroror("c_errorore nella shmget nel main del server.");
+		herror("c_errorore nella shmget nel main del server.");
 	}
-	
+}
+
+int increse_client(int *utenti_connessi){
+	*utenti_connessi = *utenti_connessi + 1;
+	return *utenti_connessi;
+}
+
+
+void define_num_client(){
+	utenti_connessi=malloc((CONNESSIONI*sizeof(int)));
+		if(utenti_connessi==NULL){
+			printf("Problema creazione dell'array di interi indicante gli utenti connessi\n");
+			exit(-1);
+		}
+		utenti_connessi = mmap(NULL,105,PROT_READ|PROT_WRITE,MAP_ANONYMOUS|MAP_SHARED,0,0);
+		*utenti_connessi=0;
+}
+
+int main(){
+
+	//imposto i segnali
+	signal(SIGCHLD,(void*)exit_t);
+	signal(SIGINT,(void*)exit_t);
+	show_port();
+	define_num_client();
 	/*Salvo il pid del processo padre in una variabile globale*/
 	parent_pid = getpid();
 	
@@ -129,22 +160,20 @@ int main(){
 	//entro nel ciclo infinito di accoglienza di richieste
 	while(1){
 		bzero(buffer, MAX_DIM_MESSAGE);
-		signal(SIGINT,(void*)exit_t);
-		
 		//attendo un client
 		if(recvfrom(s_socketone, buffer, MAX_DIM_MESSAGE, 0, (struct sockaddr *) &servaddr, &len) < 0){
-			hc_erroror("c_errorore nella recvfrom nel primo while del server.");
+			herror("c_errorore nella recvfrom nel primo while del server.");
 		}
 
 		bzero(buffer, MAX_DIM_MESSAGE);
-		
+	
 		//aumento contatore che segnala i client attivi
-		client_num = client_num + 1;
+		*utenti_connessi=increse_client(utenti_connessi);
 		
 		//verifico se ho superato il range di client ammissibili in tal caso li diminusco
-		if(client_num>CONNESSIONI){
+		if(*utenti_connessi>CONNESSIONI){
 			printf("Numero massimo di client raggiunto!\n");
-			esci();
+			esci();//FORSE NON CI VA
 		}
 		else{
 			//aggiorno il numero di porta sulla quale fare connettere i client
@@ -183,10 +212,10 @@ int main(){
 			sprintf(buffer,"%d",port_client);
 			//comunico al client su quale porta si sta connettendo
 			if(sendto(s_socketone, buffer, MAX_DIM_MESSAGE,0, (struct sockaddr *) &servaddr, len) < 0){
-				hc_erroror("c_errorore nella sendto 2 del primo while del main del server.");
+				herror("c_errorore nella sendto 2 del primo while del main del server.");
 			}
 			bzero(buffer, MAX_DIM_MESSAGE);
-			printf("UTENTI CONNESSI %d\n",client_num);
+			printf("UTENTI CONNESSI %d\n",*utenti_connessi);
 			/*
 			Creo un child per ogni connessione, esso la gestirà mentre il padre rimarrà in ascolto di nuove eventuali connessioni
 			Questa fase è molto importante in quanto ogni volta che viene richiesta una connessione viene creato un child che 
@@ -201,7 +230,8 @@ int main(){
 				*/
 				signal(SIGINT,(void*)exit_t);
 				socketone = creazione_socket(port_client);//apro
-				close(s_socketone);//chiudo
+				chiudi_socket(s_socketone);
+				
 				/*creo i segnali per la gestione del child*/
 				signal(SIGCHLD, SIG_IGN);
 				signal(SIGUSR1, SIG_IGN);
@@ -211,12 +241,12 @@ int main(){
 					bzero(buffer, MAX_DIM_MESSAGE);//Pulisco il buffer
 					/*Vado in attesa di un messaggio*/
 					if(recvfrom(socketone, buffer, MAX_DIM_MESSAGE, 0, (struct sockaddr *) &servaddr, &len) < 0){
-						if (c_errorno==EAGAIN)
+						if (errno==EAGAIN)
 						{
 							return 0;
 						}
 						else{
-							hc_erroror("c_errorore nella recvfrom del secondo while del main del server.");
+							herror("c_errorore nella recvfrom del secondo while del main del server.");
 						}
 					}
 					/*Gestisco la richiesta del client*/
@@ -318,17 +348,18 @@ void recive_UDP_GO_BACK_N(){
 			char pckt_rcv[MAX_DIM_MESSAGE];
 			char *pckt_rcv_parsed;
 			pckt_rcv_parsed = malloc(DIM_PACK);
-			/*attesa pacchetto*/
+			
+			/*attesa di un pacchetto*/
 			int c_error = recvfrom(socketone, pckt_rcv, MAX_DIM_MESSAGE, 0, (SA *) &servaddr, &len);
 			if (c_error < 0){
-				if(c_errorno == EAGAIN)
+				if(errno == EAGAIN)
 				{
 					printf("buffo di ricezione scaduto nella recive_UDP_rel_file del client\n");
 					goto FINE;
 				}
 				else
 				{
-					hc_erroror("c_errorore nella recvfrom della recive_UDP_rel_file nel client");
+					herror("c_errorore nella recvfrom della recive_UDP_rel_file nel client");
 				}
 			}
 			
@@ -415,14 +446,14 @@ int sendACK(int seq,int WINDOW_SIZE){
 	{
 		loss_prob = L_PROB;
 	}
-	int ran =  rand()%100;
-	printf("Numero random scelto: %d\n",ran);
-	if(ran < (100 - loss_prob)) {
+	int random = num_random(); 
+	printf("Numero random scelto: %d\n",random);
+	if(random < (100 - loss_prob)) {
 		printf("Sto inviando l'ACK: %d.\n", seq);
 		c_error = sendto(socketone, buffer, MAX_DIM_MESSAGE, 0, (SA *) &servaddr, len);
 		bzero(buffer, MAX_DIM_MESSAGE);
 		if(c_error < 0){
-			hc_erroror("c_errorore nella sendto della sendACK del server.");
+			herror("c_errorore nella sendto della sendACK del server.");
 		}
 		return 1;
 	}
@@ -435,6 +466,23 @@ int sendACK(int seq,int WINDOW_SIZE){
 
 
 
+/*Questa funzione serve per creare numeri random da 0 a 100*/
+int num_random(){
+	return rand()%100;
+}
+/*Questa funzione serve per chiudere una socket*/
+int chiudi_socket(int sock){
+	return close(sock);
+}
+
+/*
+Questa funzione serve a preparare il server alla ricezione dei dati allocando memoria sufficente per contenerli
+In particolare riceve informaizoni come il nome, la dimensione
+ed in base ad esse si calcola il numero di pacchetti da ricevere
+In base al nome ricevuto essa crea un file dello stesso nome all'interno della repository
+e alla fine della ricezione copia l'intero contenuto dei pack ricevuti su quel file
+In fine aggiorna la lista dei file disponibili sul server
+*/
 void reception_data(){
 	START_RECEIVE_LEN:
 	printf("Avviata procedura di ricezione del file\n");
@@ -442,15 +490,15 @@ void reception_data(){
 	/*Ricevo il nome del file*/
 	c_error = recvfrom(socketone, buffer, MAX_DIM_MESSAGE, 0, (SA *) &servaddr, &len);
 	if(c_error < 0){
-		if(c_errorno == EAGAIN)
+		if(errno == EAGAIN)
 		{
 			goto START_RECEIVE_LEN;
 		}
-		hc_erroror("c_errorore nella recvfrom della receive_name_and_len_file del server.");
+		herror("c_errorore nella recvfrom della receive_name_and_len_file del server.");
 	}
 	/*Lo copio in un buffer*/
 	if(strcpy(pathname, buffer) == NULL){
-		hc_erroror("c_errorore nella strncpy della receive_name_and_len_file del server.");
+		herror("c_errorore nella strncpy della receive_name_and_len_file del server.");
 	}
 	bzero(buffer, MAX_DIM_MESSAGE);
 	/*
@@ -460,7 +508,7 @@ void reception_data(){
 	/*Attendo la lunghezza del file*/
 	c_error = recvfrom(socketone, buffer, MAX_DIM_MESSAGE, 0, (SA *) &servaddr, &len);
 	if(c_error < 0){
-		hc_erroror("c_errorore nella recvfrom della receive_len_file del server.");
+		herror("c_errorore nella recvfrom della receive_len_file del server.");
 	}
 	int dim_file=atoi(buffer);
 	printf("Ho ricevuto un file di lunghezza :%d\n",dim_file);
@@ -479,14 +527,14 @@ void reception_data(){
    	for(int i = 0; i < num_pack; i++){
     	buff_file[i] = mmap(NULL, DIM_PACK, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_SHARED, 0, 0);
     	if(buff_file[i] == NULL){
-			hc_erroror("c_errorore nella mmap del buff_file della receive_name_and_len_file del server.");
+			herror("c_errorore nella mmap del buff_file della receive_name_and_len_file del server.");
 		}
     }
     
 	/*Copio il contenuto in un nuovo file man mano che ricevo pacchetti*/
 	int file = open(pathname, O_CREAT|O_RDWR, 0666);
 	if(file == -1){
-		hc_erroror("c_errorore nella open in create_local_file del server.");
+		herror("c_errorore nella open in create_local_file del server.");
 	}
 	printf("Ho creato il file.\n");
 	printf("Inizio a ricevere i pacchetti con GO-BACK-N\n");
@@ -499,7 +547,7 @@ void reception_data(){
 	for(int i = 0; i < num_pack; i++){
 		int ret = write(file, buff_file[i], DIM_PACK);
 		if(ret == -1){
-			hc_erroror("c_errorore nella write della write_data_packet_on_local_file del server.");
+			herror("c_errorore nella write della write_data_packet_on_local_file del server.");
 		}
 	}
 	printf("File scritto correttamente.\n");
@@ -509,7 +557,7 @@ void reception_data(){
 	f=fopen("lista.txt","a");
 	fprintf(f, "\n%s", pathname); 
 	printf("File aggiornato correttamente.\nOperazione di upload completata con successo.\n");
-	//printf("Operazione di upload completata con successo.\n");
+	fclose(f);
 	return;
 }
 	
@@ -527,7 +575,7 @@ int creazione_socket(int s_port){
 	len = sizeof(servaddr);
 	// controllo d'c_errorore nella creazione della socket
 	if(s_socketone == -1){
-		hc_erroror("ATTENZIONE! Creazione della socket fallita...");
+		herror("ATTENZIONE! Creazione della socket fallita...");
 	}
 	else{
 		printf("Socket creata\n");
@@ -542,7 +590,7 @@ int creazione_socket(int s_port){
 
 	// binding della socket con controllo d'c_errorore
 	if((bind(s_socketone, (struct sockaddr *)&servaddr, sizeof(servaddr)))!=0){
-		hc_erroror("ATTENZIONE! Binding della socket fallito...");
+		herror("ATTENZIONE! Binding della socket fallito...");
 	}
 	else{
 		printf("Socket-Binding eseguito\n");
@@ -577,13 +625,13 @@ void f_lista(int socketone, struct sockaddr_in servaddr, socklen_t len){
 	}
 	lseek(fd,0,0);//riposiziono la testina all'inizio del file
 	while((read(fd,buff_file_list,size)==-1)){//inserisco all'interno di buff_file_list l'intero contenuto del file
-		if(c_errorno!=EINTR){
+		if(errno!=EINTR){
 			printf("c_errorore lettura contenuto della lista dei file\n");
 			return;
 		}
 	}
 	while((sendto(socketone,buff_file_list,size,0,(struct sockaddr *) &servaddr, len))==-1){//metto il contenuto sulla socket
-		if(c_errorno!=EINTR){
+		if(errno!=EINTR){
 		printf("c_errorore caricamneot lista dei file sulla socket\n");
 		return;
 		}
@@ -599,12 +647,14 @@ Medianti questi dati lancia un segnale di kill verso quel process ID e chiude la
 */
 void f_esci(int port_client, int socket_fd, pid_t pid){
 	printf("Chiudo la connessione verso la porta: %d.\n", port_client);
-	int ret = close(socket_fd);
+	int ret = chiudi_socket(socket_fd);
 	if(ret == -1){
-		hc_erroror("c_errorore nella chiusura della socket\n");
+		herror("c_errorore nella chiusura della socket\n");
 	}
 	*numeri_di_porta[port_client-PORT-1]=port_client;
-	kill(pid, SIGUSR1);	
+	*utenti_connessi=decrement_client(utenti_connessi);
+	kill(pid, SIGUSR1);
+	kill(getpid(),0);	
 }
 	
 
@@ -619,12 +669,12 @@ void child_exit(){
 	bzero(buffer, MAX_DIM_MESSAGE);
 	sprintf(buffer, "%d", CODICE);
 	// se ci sono client connessi notifico a loro la chiusura del server
-	if(client_num >0){
+	if(*utenti_connessi >0){
 		if(sendto(socketone, buffer, MAX_DIM_MESSAGE, 0, (struct sockaddr *) &servaddr, len) < 0){ 
-			hc_erroror("c_errorore invio segnale di chiusura della socket al child.");
+			herror("c_errorore invio segnale di chiusura della socket al child.");
 		}
 	}
-	close(socketone);
+	chiudi_socket(socketone);
 	exit(1);
 }
 
@@ -639,7 +689,7 @@ void* esci(){
 	sprintf(buffer,"%d",PORTA_DI_INIZIALIZZAZIONE);
 	//comunico al client su quale porta si sta connettendo
 	if(sendto(s_socketone, buffer, MAX_DIM_MESSAGE,0, (struct sockaddr *) &servaddr, len) < 0){
-		hc_erroror("c_errorore nella sendto 2 del primo while del main del server.");
+		herror("c_errorore nella sendto 2 del primo while del main del server.");
 	}
 	bzero(buffer, MAX_DIM_MESSAGE);
 }
