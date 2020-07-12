@@ -15,6 +15,7 @@
 #include<sys/time.h>
 #include <errno.h>
 #include <pthread.h>
+#include <signal.h>
 
 
 
@@ -41,6 +42,9 @@ struct inside_the_package{
 void lista_dei_file(int, struct sockaddr_in, socklen_t);
 int creazione_socket(int);
 void setTimeout(double,int);
+void *esci();
+void lista_dei_file(int , struct sockaddr_in , socklen_t );
+
 
 
 
@@ -67,7 +71,7 @@ int main() {
 	int fd;
 	//Creo la socket
 	socketone=socket(AF_INET, SOCK_DGRAM, 0);
-	
+	signal(SIGINT,(void*)esci);
 	//Controllo se ci sono stati errori nella creazione della socket
 	if(socketone == -1) {
 		perror("Socket fallita\n");
@@ -94,7 +98,6 @@ int main() {
 	//Mi presento al server
 	sendto(socketone, buffer, sizeof(buffer), 0, (SA *) &servaddr, len);
 	
-	/**timer per la scadenza della richiesta**/
 
 	//Pulisco buffer
 	bzero(buffer, DIMENSIONE_MESSAGGI);
@@ -115,11 +118,17 @@ int main() {
 	atoi(char*) converte un stringha nel numero corrispondente
 	*/
 	int port_number =atoi(buffer);
+	
 	//Controllo se il server ha un numero massimo di client connessi, nel caso positivo riceverò come port_number un codice indicante tale evento
 	if(port_number==8089){
 		printf("Server pieno, riprova più tardi!\n");
 		exit(0);
 	}
+	if(port_number==CODICE){
+		printf("Server pieno, riprova più tardi!\n");
+		exit(0);
+	}
+	
 	printf("\nNUM PORTA DOVE SONO CONNESSO %d\n",port_number);
 	//Mostro a schermo le possibili scelte
 	printf("Inserisci un comando tra: \n1) exit\n2) list\n3) download \n4) upload\n");
@@ -127,20 +136,22 @@ int main() {
 	socketone = creazione_socket(port_number);
 	//Ciclo infinito di richieste
 	while(1){
+		signal(SIGINT,(void*)esci);
 		if(atoi(buffer) == CODICE){
 				perror("ATTENZIONE! Il server non è più in funzione.");
 				return 1;
-			}
+		}
 		//Faccio una pulizia preliminare del buffer
 		bzero(buffer, DIMENSIONE_MESSAGGI);
 
 		//Inserisco nel buffe rla linea di richiesta del client
 		printf("\nComando:");
+		signal(SIGINT,(void*)esci);
 		fgets(buffer, DIMENSIONE_MESSAGGI, stdin);
 		//Verifico se il client vuole uscire o meno dal ciclo
 		if((strncmp("1", buffer, strlen("1"))) == 0){//Caso di uscita
 			printf("Il client sta chiudendo la connessione...\n");
-			// invio il messaggio al server per notificargli la chiusura del client
+			//invio il messaggio al server per notificargli la chiusura del client
 			err = sendto(socketone, buffer, sizeof(buffer), 0, (SA *) &servaddr, len);
 			// pulisco il buffer
 			bzero(buffer, DIMENSIONE_MESSAGGI);
@@ -170,10 +181,17 @@ int main() {
 			printf("------------------------------------------------[FASE DI UPLOAD]------------------------------------------------\n");
 			/*Attendo che il Server mi dia il permesso per proseguire*/
 			bzero(buffer, DIMENSIONE_MESSAGGI);
+			
+			/*Attendo permesso dal server*/
 			err = recvfrom(socketone, buffer, sizeof(buffer), 0, (SA *) &servaddr, &len);
 			if (err < 0){
 				perror("Errore nella recvfrom nella sezione del servizio di upload del client.");
 			}
+			if(atoi(buffer) == CODICE){
+				perror("ATTENZIONE! Il server non è più in funzione.");
+				return 1;
+			}
+			
 			/*
 			Scelgo il file da inviare
 			Per farlo apro uno stream di sola lettura verso il file presente nella directory del client, 
@@ -320,23 +338,26 @@ int main() {
 			num=0;
 			bzero(buffer, DIMENSIONE_MESSAGGI);
 		}
-		
 		//CASO DOWNLOAD
 		else if((strncmp("3", buffer, strlen("3"))) == 0) {
 			//Invio al server cosa voglio fare
 			err = sendto(socketone, buffer, sizeof(buffer), 0, (SA *) &servaddr, len);
 			/*attesa rispsta del server*/
+			
+			if(atoi(buffer) == CODICE){
+				perror("ATTENZIONE! Il server non è più in funzione.");
+				return 1;
+			}
 			printf("Stai effettuando il download\n");
 			
 		}
-		
 		//CASO INPUT ERRATO
 		else{
 			printf("INPUT ERRATO! Inserisci un domando valido tra list, upload, download e exit.\n");
 			bzero(buffer, DIMENSIONE_MESSAGGI);
 		}
 	}
-		return 0;
+	return 0;
 }
 
 
@@ -380,6 +401,10 @@ void lista_dei_file(int socketone, struct sockaddr_in servaddr, socklen_t len){
 	/*attesa rispsta del server*//*restituira dentro buffer la lista degliu elementi disponibili*/
 	bzero(buffer,DIMENSIONE_MESSAGGI);
 	recvfrom(socketone,buffer,sizeof(buffer),0,(SA *) &servaddr, &len);
+	if(atoi(buffer) == CODICE){
+				perror("ATTENZIONE! Il server non è più in funzione.");
+				return;
+	}
 	printf("--------------------------------------------------[LISTA DEI FILE NEL CLIENT]---------------------------------------------------\n%s\n---------------------------------------------------------------------------------------------------------------------------------\n", buffer);
 }
 	
@@ -482,4 +507,21 @@ void setTimeout(double time,int id) {
     timeout.tv_sec = 0;
     timeout.tv_usec = time;
     setsockopt(socketone, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+}
+
+void *esci(){
+	bzero(buffer, DIMENSIONE_MESSAGGI);
+	printf("BUFFER -> %s",buffer);
+	snprintf(buffer, DIMENSIONE_MESSAGGI, "1");
+	printf("BUFFER -> %s",buffer);
+	err = sendto(socketone, buffer, sizeof(buffer), 0, (SA *) &servaddr, len);
+	// pulisco il buffer
+	bzero(buffer, DIMENSIONE_MESSAGGI);
+	if (err < 0){
+		perror("Errore nell'invio del messaggio di chiusura da parte del client\n");
+	}
+	
+	// chiudo la socket
+	close(socketone);
+	exit(1);
 }

@@ -17,11 +17,11 @@
 #include<sys/ipc.h>
 #include<sys/shm.h>
 #include<pthread.h>
-#include <errno.h>
+#include<errno.h>
 
 
 /*Valori definiti preliminarmente*/
-#define PORTA_DI_INIZIALIZZAZIONE 8089 //Usata per creare una soket di comunicazione al client che dorvà essere subito scollegato
+#define PORTA_DI_CHIUSURA 8089 //Usata per creare una soket di comunicazione al client che dorvà essere subito scollegato
 #define PORT 8090 //Porta di default per l'inizio delle conversazioni client-server
 #define MAXDIM 1024
 #define CODICE 25463 //Codice di utility per gestire la chiusura del server
@@ -47,6 +47,7 @@ int num_random();
 int chiudi_socket(int);
 void show_port();
 int decrement_client(int*);
+void *exit_p();
 
 
 /*strutture*/
@@ -80,6 +81,7 @@ int shmid; 	//Identificativo della memoria condivisa
 int port_client; //Porta che diamo al client per le successive trasmissioni multiprocesso
 int socketone;	//File descriptor di socket
 int c_error; 	// intero per il controllo della gestione d'c_errorore
+int parent; //pid del processo padre
 
 
 
@@ -139,10 +141,8 @@ void define_num_client(){
 }
 
 int main(){
-
-	//imposto i segnali
-	signal(SIGCHLD,(void*)exit_t);
-	signal(SIGINT,(void*)exit_t);
+	signal(SIGINT,(void*)exit_p);//esco nel caso il child termina
+	//signal(SIGCHLD,(void*)exit_p);//esco nel caso di cntl+c
 	show_port();
 	define_num_client();
 	/*Salvo il pid del processo padre in una variabile globale*/
@@ -151,13 +151,20 @@ int main(){
 	//creo la socket di comunicazione per i child
 	s_socketone = creazione_socket(PORT);
 	
-	//creo un processo che gestisce l'eventuale richiesta di chiusura del server
+	
+	/*//creo un processo che gestisce l'eventuale richiesta di chiusura del server-->1° Child creato per la gestione della chiusura
 	pid_t pid = fork();
 	if(pid == 0){
-		signal(SIGUSR1, SIG_IGN);
-		//child_exit(shmid);
+		signal(SIGINT,(void*)exit_t); //Se viene premuto ctlt+c viene passato il controllo ad esci e viene inviato al padre il segnale di uscita
 	}
+	parent = pid; //il padre prende il pid parent
+	*/
+	
+	
 	//entro nel ciclo infinito di accoglienza di richieste
+	//imposto i segnali
+	
+	
 	while(1){
 		bzero(buffer, MAX_DIM_MESSAGE);
 		//attendo un client
@@ -230,11 +237,11 @@ int main(){
 				*/
 				signal(SIGINT,(void*)exit_t);
 				socketone = creazione_socket(port_client);//apro
-				chiudi_socket(s_socketone);
+				chiudi_socket(s_socketone);/*Chiudo la socket non utilizzata dal child ereditata dal parent*/
 				
 				/*creo i segnali per la gestione del child*/
-				signal(SIGCHLD, SIG_IGN);
-				signal(SIGUSR1, SIG_IGN);
+				//signal(SIGCHLD, SIG_IGN);
+				//signal(SIGUSR1, SIG_IGN);
 				//signal(SIGUSR2, child_exit);//Gestione della chiusira del server, manda un messaggio di chiusura verso il client
 				/*Entro nel ciclo di ascolto infinito*/
 				while(1){
@@ -658,41 +665,48 @@ void f_esci(int port_client, int socket_fd, pid_t pid){
 }
 	
 
-/*
-Questa funzione serve per segnalare al child la chiusura del server
-Viene copiata nella socket un messaggio speciale che indica tale evento
-Per ogni client connesso "se ci sono" mando tale segnale
-Esco con un codice di terminazione 1 := good finish
-*/
-void child_exit(){
-	printf("Socket: %d. in chiusura\n", socketone);
+
+
+
+//Funzione di terminazione dei child
+void *exit_t(){
+	printf("\n");
 	bzero(buffer, MAX_DIM_MESSAGE);
 	sprintf(buffer, "%d", CODICE);
-	// se ci sono client connessi notifico a loro la chiusura del server
-	if(*utenti_connessi >0){
-		if(sendto(socketone, buffer, MAX_DIM_MESSAGE, 0, (struct sockaddr *) &servaddr, len) < 0){ 
-			herror("c_errorore invio segnale di chiusura della socket al child.");
-		}
+	/*Comunico al client la chiusura*/
+	if(sendto(socketone, buffer, MAX_DIM_MESSAGE, 0, (struct sockaddr *) &servaddr, len) < 0){ 
+		herror("c_errorore invio segnale di chiusura della socket al child.");
 	}
+	/*Chiudo la socket del child*/
 	chiudi_socket(socketone);
+	printf("socketone (socket di gestione verso il client) chiusa con successo\n");
+	
+	/*Avviso il padre della chiusura*/
+	kill(parent,SIGINT); //invio al padre il segnale SIGINT
 	exit(1);
 }
 
-void *exit_t(){
+
+//funzione di terminazione del parent
+void *exit_p(){
+	printf("\n");
+	printf("s_socketone (socket di accoglienza) chiusa con successo\n");
+	chiudi_socket(s_socketone);
 	exit(1);
 }
 
-
+/*Funzione per comunicare al client che le porte sono piene*/
 void* esci(){
 	bzero(buffer, MAX_DIM_MESSAGE);
 	//scrivo il valore aggionrato nel buffer di comunicazione
-	sprintf(buffer,"%d",PORTA_DI_INIZIALIZZAZIONE);
-	//comunico al client su quale porta si sta connettendo
+	sprintf(buffer,"%d",PORTA_DI_CHIUSURA);
+	//comunico al client che sono pieno
 	if(sendto(s_socketone, buffer, MAX_DIM_MESSAGE,0, (struct sockaddr *) &servaddr, len) < 0){
 		herror("c_errorore nella sendto 2 del primo while del main del server.");
 	}
 	bzero(buffer, MAX_DIM_MESSAGE);
 }
+
 
 	
 	
