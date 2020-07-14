@@ -51,6 +51,7 @@ void recive_UDP_GO_BACK_N();
 int sendACK(int ,int );
 /*Questa funzione serve per creare numeri random da 0 a 100*/
 int num_random();
+int send_packet_GO_BACK_N(struct inside_the_package *, int , int );
 
 
 
@@ -317,38 +318,38 @@ int main() {
 			/*Fase di invio dei pacchetti*/
 			
 			/*Vedo quanti pacchetti non sono multipli della windows dimensione*/
-			int offset = num_pacchetti%DIMENSIONE_FINESTRA;
+			int offset = (num_pacchetti)%DIMENSIONE_FINESTRA;
 			/*Caso in cui il numero dei pacchetti da inviare in maniera diversa perche non sono un multipli della WINDOWS_SIZE*/
-			
+			printf("OFFSET %d\n",offset);
 
 
 
-			if(offset > 0){//Numoero di pacchetti da inviare "multipli di WINDOWS_SIZE"*/
+			//if(offset > 0){//Numoero di pacchetti da inviare "multipli di WINDOWS_SIZE"*/
 			/*Se ci sono pacchetti "multipli di WINDOWS_SIZE" da inviare invio quelli*/
 				if(num_pacchetti-seq >= offset){
+					printf("PACK NORMALI\n");
 					while(seq<num_pacchetti - offset){//fino a quando non sono arrivato al primo pack "NON multiplo di WINDOWS_SIZE"
+						printf("SEQ --> %d; NUM_PACCHETTI --> %d\n",seq,num_pacchetti);
 						printf("num_pacchetti= %d\t\t seq= %d\t\t  di cui offset= %d\t\t\n", num_pacchetti, seq, offset);
-						seq = send_packet_GO_BACK_N(file_struct, seq, DIMENSIONE_FINESTRA,num);//mando la struttura contenente i pacchetti, la sequenza, e la dimensione della finestra
+						seq = send_packet_GO_BACK_N(file_struct, seq, DIMENSIONE_FINESTRA);//mando la struttura contenente i pacchetti, la sequenza, e la dimensione della finestra
 				
 					}
-				}
-		
-				/*Una volta inviati i pacchetti "multipli di WINDOWS_SIZE" invio offset pacchetti "NON multipli di WINDOWS_SIZE"*/
-				printf("num_pacchetti= %d\t\t seq= %d\t\t offset= %d\t\t.\n", num_pacchetti, seq, offset);
-				
-				/*Controllo se ho finito di mandare gia i pacchetti a causa di ritrasmissioni*/
-				if(seq<num_pacchetti){		/*Nel caso ne rimangano alcuni, li invio*/
-					seq = send_packet_GO_BACK_N(file_struct, seq, offset);//mando la struttura contenente i pacchetti, la sequenza, e il numero di pacchetti rimanenti
+					printf("SONO USCITOP \n");
+					/*Una volta inviati i pacchetti "multipli di WINDOWS_SIZE" invio offset pacchetti "NON multipli di WINDOWS_SIZE"*/
+					if(seq<num_pacchetti){		/*Nel caso ne rimangano alcuni, li invio*/
+						seq = send_packet_GO_BACK_N(file_struct, seq, offset);//mando la struttura contenente i pacchetti, la sequenza, e il numero di pacchetti rimanenti
+					}
 				}
 				printf("----------------------------------------------------[FINE FASE]----------------------------------------------------\n");
-				goto FINISH;
-			}
+				
+			//}
 			/*Caso in cui il numero dei pacchetti è un multiplo della WINDOWS_SIZE*/
-			else{
-				while(seq < num_pacchetti){
-					seq = send_packet_GO_BACK_N(file_struct, seq, DIMENSIONE_FINESTRA);//mando la struttura contenente i pacchetti, la sequenza, e la dimensione della finestra
-				}
-			}
+			//else{
+			//	printf("\n PACK NORMALI \n");
+			//	while(seq < num_pacchetti){
+			//		seq = send_packet_GO_BACK_N(file_struct, seq, DIMENSIONE_FINESTRA);//mando la struttura contenente i pacchetti, la sequenza, e la dimensione della finestra
+			//	}
+			//}
 			
 			
 			
@@ -488,7 +489,7 @@ void reception_data(){
 	FILE *f;
 	f=fopen("lista_c.txt","a");
 	fprintf(f, "\n%s", file_name); 
-	printf("File aggiornato correttamente.\nOperazione di upload completata con successo.\n");
+	printf("File aggiornato correttamente.\nOperazione completata con successo.\n");
 	close(fd);
 	return;
 }
@@ -746,6 +747,7 @@ void recive_UDP_GO_BACK_N(){
 			La funzione restituisce la sottostringa del pacchetto -> PASSA MALE IL CONTENUTO
 			contentente il messaggio vero e proprio
 			*/
+			/*
 			char *c_index;
 			sprintf(c_index, "%d", seq);
 			int st = strlen(c_index) + 1;
@@ -753,8 +755,9 @@ void recive_UDP_GO_BACK_N(){
 			char *end = &pckt_rcv[DIMENSIONE_MESSAGGI];
 			char *substr = (char *)calloc(1, end - start + 1);
 			memcpy(substr, start, end - start);
-			pckt_rcv_parsed = substr;//pckt_rcv_parsed ha la stringa del pacchetto
-			printf("----------------------------------------------------------CONTENUTO PACK %d-esimo:----------------------------------------------------\n%s\n:------------------------------------------------------------------------------------------------------------------------------------------\n",seq,pckt_rcv_parsed);
+			pckt_rcv_parsed = substr;//pckt_rcv_parsed ha la stringa del pacchetto*/
+			pckt_rcv_parsed="come stai";
+			printf("-----------------------------------------CONTENUTO PACK %d-esimo:-----------------------------------------\n%s\n-----------------------------------------------------------------------------------------------------------\n",seq,pckt_rcv_parsed);
 			
 			/*Ora devo mandare gli ack */
 			if(sendACK(seq,DIMENSIONE_FINESTRA)){

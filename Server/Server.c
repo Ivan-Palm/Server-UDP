@@ -34,6 +34,13 @@
 #define SEND_FILE_TIMEOUT 100000 // timeout di invio
 
 
+/*strutture*/
+struct pacchetto{
+	int numero_ordine;//indica la posizione
+	char buf[MAX_DIM_MESSAGE];//dati
+	int ack;//indica se è un riscontro
+};
+
 
 /*Dichiarazioni funzioni*/
 int si=0;
@@ -53,14 +60,9 @@ void show_port();
 int decrement_client(int*);
 void *exit_p();
 void setTimeout(double,int);
+int send_packet_GO_BACK_N(struct pacchetto *, int , int );
 
 
-/*strutture*/
-struct pacchetto{
-	int numero_ordine;//indica la posizione
-	char buf[MAX_DIM_MESSAGE];//dati
-	int ack;//indica se è un riscontro
-};
 
 
 /*Variabili globali*/
@@ -340,7 +342,7 @@ void f_download(int socketone, struct sockaddr_in servaddr, socklen_t len){
 	}
 	/*Mando il nome*/
 	if(sendto(socketone,buffer, MAX_DIM_MESSAGE, 0, (struct sockaddr *) &servaddr, len) < 0) { 
-		error("Errore nella sendto della send_name del server.");
+		herror("Errore nella sendto della send_name del server.");
 	}
 	
 	/*Calcolo il numero di pacchetti da inviare*/
@@ -354,7 +356,7 @@ void f_download(int socketone, struct sockaddr_in servaddr, socklen_t len){
 	
 	/*Mando la lunghezza del file*/
 	if(sendto(socketone, buffer, MAX_DIM_MESSAGE, 0, (struct sockaddr *) &servaddr, len) <0){
- 		error("Errore nella sendto della send_len_file del server.");
+ 		herror("Errore nella sendto della send_len_file del server.");
  	}	
 	
 	/*Invio i pacchetti*/
@@ -396,35 +398,34 @@ void f_download(int socketone, struct sockaddr_in servaddr, socklen_t len){
 	/*Fase di invio dei pacchetti*/
 	
 	/*Vedo quanti pacchetti non sono multipli della windows dimensione*/
-	int offset = num_pacchetti%DIMENSIONE_FINESTRA;
+	int offset = (num_pacchetti)%DIMENSIONE_FINESTRA;
 	/*Caso in cui il numero dei pacchetti da inviare in maniera diversa perche non sono un multipli della WINDOWS_SIZE*/
-	
+	printf("OFFSET -> %d\n",offset);
 
-	if(offset > 0){//Numoero di pacchetti da inviare "multipli di WINDOWS_SIZE"*/
+	//if(offset > 0){//Numoero di pacchetti da inviare "multipli di WINDOWS_SIZE"*/
 	/*Se ci sono pacchetti "multipli di WINDOWS_SIZE" da inviare invio quelli*/
 		if(num_pacchetti-seq >= offset){
 			while(seq<num_pacchetti - offset){//fino a quando non sono arrivato al primo pack "NON multiplo di WINDOWS_SIZE"
+				printf("SEQ --> %d; NUM_PACCHETTI --> %d\n",seq,num_pacchetti);
 				printf("num_pacchetti= %d\t\t seq= %d\t\t  di cui offset= %d\t\t\n", num_pacchetti, seq, offset);
-				seq = send_packet_GO_BACK_N(file_struct, seq, DIMENSIONE_FINESTRA,num);//mando la struttura contenente i pacchetti, la sequenza, e la dimensione della finestra
-				printf("\nValore di sequenza -> %d\n",seq);
+				seq = send_packet_GO_BACK_N(file_struct, seq, DIMENSIONE_FINESTRA);//mando la struttura contenente i pacchetti, la sequenza, e la dimensione della finestra
+			
+			}
+			printf("SONO USCITOP \n");
+			/*Una volta inviati i pacchetti "multipli di WINDOWS_SIZE" invio offset pacchetti "NON multipli di WINDOWS_SIZE"*/
+			if(seq<num_pacchetti){		/*Nel caso ne rimangano alcuni, li invio*/
+			seq = send_packet_GO_BACK_N(file_struct, seq, offset);//mando la struttura contenente i pacchetti, la sequenza, e il numero di pacchetti rimanenti
 			}
 		}
-
-		/*Una volta inviati i pacchetti "multipli di WINDOWS_SIZE" invio offset pacchetti "NON multipli di WINDOWS_SIZE"*/
-		printf("num_pacchetti= %d\t\t seq= %d\t\t offset= %d\t\t.\n", num_pacchetti, seq, offset);
-		
-		if(seq<num_pacchetti){		/*Nel caso ne rimangano alcuni, li invio*/
-			seq = send_packet_GO_BACK_N(file_struct, seq, offset);//mando la struttura contenente i pacchetti, la sequenza, e il numero di pacchetti rimanenti
-		}
 		printf("----------------------------------------------------[FINE FASE]----------------------------------------------------\n");
-		goto FINISH;
-	}
+		
+	//}
 	/*Caso in cui il numero dei pacchetti è un multiplo della WINDOWS_SIZE*/
-	else{
-		while(seq < num_pacchetti){
-			seq = send_packet_GO_BACK_N(file_struct, seq, DIMENSIONE_FINESTRA);//mando la struttura contenente i pacchetti, la sequenza, e la dimensione della finestra
-		}
-	}
+	//else{
+	//	while(seq < num_pacchetti){
+	//		seq = send_packet_GO_BACK_N(file_struct, seq, DIMENSIONE_FINESTRA);//mando la struttura contenente i pacchetti, la sequenza, e la dimensione della finestra
+	//	}
+	//}
 	FINISH:
 	printf("Ho finito l'operazione\n");
 	/*Reset delle informaizoni*/
@@ -688,7 +689,7 @@ void reception_data(){
 	FILE *f;
 	f=fopen("lista.txt","a");
 	fprintf(f, "\n%s", pathname); 
-	printf("File aggiornato correttamente.\nOperazione di upload completata con successo.\n");
+	printf("File aggiornato correttamente.\nOperazione completata con successo.\n");
 	fclose(f);
 	return;
 }
@@ -845,7 +846,7 @@ La funzione associa il timer al primo pacchetto della finestra, ed ogni volta ch
 partire il timer associato al nuovo leader della finestra(il primo)	*/
 int send_packet_GO_BACK_N(struct pacchetto *file_struct, int seq, int offset){//offset ha il valore della WINDOWS dimensione per i pacchetti "multipli di windows dimensione" e offset per i pack "non multipli"
 	int i;
-	int j;
+	int j=0;
 	si = 0; //indice di partenza per riscontrar ei pack
 	int timer=1; //utile per far partire il timer solo del primo pacchetto
 	printf("\n--------------------------------------------------------------------------------------------------------\n");
@@ -873,6 +874,9 @@ int send_packet_GO_BACK_N(struct pacchetto *file_struct, int seq, int offset){//
 	}
 	printf("\n--------------------------------------------------------------------------------------------------------\n");
 	/*Entro nella fase di attesa dei riscontri dei pacchetti*/
+	printf("si -> %d\n",si);
+	printf("offset -> %d\n",si);
+	printf("j -> %d\n",si);
 	for(j = si; j < offset; j++){
 		printf("Attendo ACK [%d]\n",seq+si);
 		bzero(buffer, MAX_DIM_MESSAGE);
@@ -930,6 +934,7 @@ int send_packet_GO_BACK_N(struct pacchetto *file_struct, int seq, int offset){//
 		}
 	}
 	FINE:
+	printf("RITORNO SEQ -> %d\n",seq);
 	return seq;
 }
 
