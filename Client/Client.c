@@ -142,9 +142,7 @@ int main() {
 		printf("Server pieno, riprova più tardi!\n");
 		exit(0);
 	}
-	printf("\nNUM PORTA DOVE SONO CONNESSO %d\n",port_number);
-	//Mostro a schermo le possibili scelte
-	printf("Inserisci un comando tra: \n1) exit\n2) list\n3) download \n4) upload\n");
+	printf("\n[CONNESSO ALLA PORTA %d]\n",port_number);
 	//Creo la socket sulla porta passata dal server
 	socketone = creazione_socket(port_number);
 	//Ciclo infinito di richieste
@@ -156,7 +154,8 @@ int main() {
 		}
 		//Faccio una pulizia preliminare del buffer
 		bzero(buffer, DIMENSIONE_MESSAGGI);
-
+		//Mostro a schermo le possibili scelte
+		printf("Inserisci un comando tra: \n1) exit\n2) list\n3) download \n4) upload\n");
 		//Inserisco nel buffe rla linea di richiesta del client
 		printf("\nComando:");
 		fgets(buffer, DIMENSIONE_MESSAGGI, stdin);
@@ -191,7 +190,7 @@ int main() {
 			if (err < 0){
 				perror("Errore nella sendto nella sezione del servizio di upload del client.");
 			}
-			printf("------------------------------------------------[FASE DI UPLOAD]------------------------------------------------\n");
+			printf("[FASE DI UPLOAD]\n");
 			/*Attendo che il Server mi dia il permesso per proseguire*/
 			bzero(buffer, DIMENSIONE_MESSAGGI);
 			
@@ -229,7 +228,7 @@ int main() {
 			
 			/*Lettura dei della lista dei file caricabili sul server*/
 			read(file,lista_dei_files, dimensione);
-			printf("[LISTA DEI FILE NEL CLIENT]\n%s\n",lista_dei_files);
+			printf("[LISTA DEI FILE NEL CLIENT]-------------------------------------\n%s\n-------------------------------------------------------------------\n",lista_dei_files);
 			
 			/*Scelta del file*/
 			bzero(buffer, DIMENSIONE_MESSAGGI);
@@ -263,7 +262,7 @@ int main() {
 				perror("Errore nella sendto della get_name_and_size_file del client.");
 			}
 			
-			printf("------------------------------------------------[INFORMAZIONI PRELIMINARI]------------------------------------------------\n");
+			printf("[INFORMAZIONI PRELIMINARI]------------------------------------------------\n");
 			/*Calcolo quanti pacchetti devo inviare al server*/
 			dim = lseek(file_inv, 0, SEEK_END);
 			num_pacchetti = (ceil((dim/DIMENSIONE_PACCHETTO)))+1;
@@ -309,38 +308,30 @@ int main() {
 			}
 			/*Stampo l'inter struttura*/
 			for (int i = 0; i < num_pacchetti; i++){
-				printf("\nFILE_STRUCT[%d].BUF contiene :\n%s\n--------------------------------------------------------------\n",i,file_struct[i].buf);
+				printf("\nFILE_STRUCT[%d].BUF contiene :-------------------------------------------------\n%s\n--------------------------------------------------------------\n",i,file_struct[i].buf);
 			}
 			
 			/*Da qui in poi ho tutti i pacchetti salvati nella struttura*/
-			printf("Ho caricato i pacchetti nella struttura\n");
-			printf("--------------------------------------------------[FASE DI SCAMBIO]---------------------------------------------------\n");
+			printf("[PACCHETTI CARICATI NELLA STRUTTURA]\n\n");
+			printf("[FASE DI SCAMBIO]---------------------------------------------------\n");
 			/*Fase di invio dei pacchetti*/
 			
 			/*Vedo quanti pacchetti non sono multipli della windows dimensione*/
 			int offset = (num_pacchetti)%DIMENSIONE_FINESTRA;
 			/*Caso in cui il numero dei pacchetti da inviare in maniera diversa perche non sono un multipli della WINDOWS_SIZE*/
-			printf("OFFSET %d\n",offset);
-
-
-
 			//if(offset > 0){//Numoero di pacchetti da inviare "multipli di WINDOWS_SIZE"*/
 			/*Se ci sono pacchetti "multipli di WINDOWS_SIZE" da inviare invio quelli*/
 				if(num_pacchetti-seq >= offset){
-					printf("PACK NORMALI\n");
+			
 					while(seq<num_pacchetti - offset){//fino a quando non sono arrivato al primo pack "NON multiplo di WINDOWS_SIZE"
-						printf("SEQ --> %d; NUM_PACCHETTI --> %d\n",seq,num_pacchetti);
-						printf("num_pacchetti= %d\t\t seq= %d\t\t  di cui offset= %d\t\t\n", num_pacchetti, seq, offset);
-						seq = send_packet_GO_BACK_N(file_struct, seq, DIMENSIONE_FINESTRA);//mando la struttura contenente i pacchetti, la sequenza, e la dimensione della finestra
-				
+						seq = send_packet_GO_BACK_N(file_struct, seq, DIMENSIONE_FINESTRA);//mando la struttura contenente i pacchetti, la sequenza, e la dimensione della finestra			
 					}
-					printf("SONO USCITOP \n");
 					/*Una volta inviati i pacchetti "multipli di WINDOWS_SIZE" invio offset pacchetti "NON multipli di WINDOWS_SIZE"*/
 					if(seq<num_pacchetti){		/*Nel caso ne rimangano alcuni, li invio*/
 						seq = send_packet_GO_BACK_N(file_struct, seq, offset);//mando la struttura contenente i pacchetti, la sequenza, e il numero di pacchetti rimanenti
 					}
 				}
-				printf("----------------------------------------------------[FINE FASE]----------------------------------------------------\n");
+				printf("[FINE FASE]----------------------------------------------------\n");
 				
 			//}
 			/*Caso in cui il numero dei pacchetti è un multiplo della WINDOWS_SIZE*/
@@ -462,16 +453,13 @@ void reception_data(){
     }
     
 	int fd = open(file_name, O_CREAT|O_RDWR, 0666);
-	printf("Inzio a ricevere i pacchetti\n");
-
-	
 	printf("Inizio a ricevere i pacchetti con GO-BACK-N\n\n\n");
 	recive_UDP_GO_BACK_N();	
-	printf("\n\nRicezione terminata correttamente.\n");
+	printf("\n\n[RICEZIONE TERMINATA CORRETTAMENTE]-----------------------------------------\n");
 	
 	/*penspo che manca la scrittur nel file fd*/
-	printf("Sto creando il file %s...\n", file_name);
-	printf("Scrivo nel file \n");
+	printf("Sto creando il file %s\n", file_name);
+
 	
 	
 	for(int i = 0; i < num_pacchetti; i++){
@@ -488,7 +476,7 @@ void reception_data(){
 	FILE *f;
 	f=fopen("lista_c.txt","a");
 	fprintf(f, "\n%s", file_name); 
-	printf("File aggiornato correttamente.\nOperazione completata con successo.\n");
+	printf("File aggiornato correttamente.\n[OPERAZIONE COMPLETATA CON SUCCESSO]\n");
 	close(fd);
 	return;
 }
@@ -702,7 +690,6 @@ void recive_UDP_GO_BACK_N(){
 		1)w_size ha dimensione DIMENSIONE_FINESTRA nel caso di pach "normali" 
 		2)w_size ha dimensione offset nel caso di pach "diversi" 
 		*/
-		printf("\nW_SIZE: %d\n\n",DIMENSIONE_FINESTRA);
 		for(int i = 0; i <w_size; i++){
 			CICLO:
 			bzero(buffer, DIMENSIONE_MESSAGGI);
@@ -731,7 +718,6 @@ void recive_UDP_GO_BACK_N(){
 			buff = strtok(pckt_rcv, s);//divido il pacchetto in piu stringhe divise da s e lo metto in buf tutto segmentato
 			int k = atoi(buff); //i prende il numero di sequenza nell'headewr del pacchetto
 			seq=k;//seq prende il numero di sequenza nell'headewr del pacchetto
-			printf("\n\nMI ASPETTO PACK %d\n\n",num);
 			if(seq!=num){
 				printf("Pacchetto %d ricevuto fuori ordine, ora lo scarto e rimando l'ack di %d\n",seq,(receive-1));
 				if(sendACK((receive-1),DIMENSIONE_FINESTRA)){//invio l'ack del pacchetto antecedente a quello che mi sarei aspettato
@@ -747,7 +733,7 @@ void recive_UDP_GO_BACK_N(){
 			if(seq >= count){
 				count = seq + 1;
 			}
-			printf("\t\t\t\t\t[HO RICEVUTO IL PACCHETTO] %d\n",seq);
+			printf("--------------------------------------[HO RICEVUTO IL PACCHETTO %d]------------------------------------\n",seq);
 			 //indico che è lui il nuovo pacchetto ricevuto
 			/*
 			La funzione restituisce la sottostringa del pacchetto -> PASSA MALE IL CONTENUTO
@@ -768,7 +754,7 @@ void recive_UDP_GO_BACK_N(){
 			//free(c_index);
 			
 			pckt_rcv_parsed="come stai";
-			printf("/----------------------------------------[CONTENUTO PACK %d-ESIMO]----------------------------------------\\n%s\n/-----------------------------------------------------------------------------------------------------------\\n",seq,pckt_rcv_parsed);
+			printf("\t\t\t\t\t[CONTENUTO PACK %d-ESIMO]\n%s\n-----------------------------------------------------------------------------------------------------------\n",seq,pckt_rcv_parsed);
 			
 			/*Ora devo mandare gli ack */
 			if(sendACK(seq,DIMENSIONE_FINESTRA)){
@@ -781,7 +767,7 @@ void recive_UDP_GO_BACK_N(){
 				if (strcpy(buff_file[seq], pacchett[seq].buf) == NULL){
 					exit(-1);
 				}
-				printf("Pacchetto riscontrato numero di seq: %d.\n\n", seq);	
+				printf("Pacchetto riscontrato numero di seq: %d.\n", seq);	
 				//incremento il contatore che mi identifica se il pack è in ordine		
 				num=seq+1;
 			}
