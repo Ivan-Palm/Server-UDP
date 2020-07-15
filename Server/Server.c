@@ -267,6 +267,7 @@ int main(){
 							herror("c_errorore nella recvfrom del secondo while del main del server.");
 						}
 					}
+					printf("Mi ha chiesto %s",buffer);
 					/*Gestisco la richiesta del client*/
 					/*Caso exit*/
 					if(strncmp("1", buffer, strlen("1")) == 0){

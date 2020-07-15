@@ -162,6 +162,7 @@ int main() {
 		fgets(buffer, DIMENSIONE_MESSAGGI, stdin);
 		//Verifico se il client vuole uscire o meno dal ciclo
 		if((strncmp("1", buffer, strlen("1"))) == 0){//Caso di uscita
+		
 			printf("Il client sta chiudendo la connessione...\n");
 			//invio il messaggio al server per notificargli la chiusura del client
 			err = sendto(socketone, buffer, sizeof(buffer), 0, (SA *) &servaddr, len);
@@ -350,6 +351,8 @@ int main() {
 			si=0;
 			seq=0;
 			num=0;
+			num_pacchetti=0;
+			id=0;
 			bzero(buffer, DIMENSIONE_MESSAGGI);
 		}
 		//CASO DOWNLOAD
@@ -435,10 +438,6 @@ void reception_data(){
 	START_RECEIVE_LEN:
 	printf("Avviata procedura di ricezione del file\n");
 	bzero(buffer, DIMENSIONE_MESSAGGI);
-
-	
-	
-	
 	/*Attendo la lunghezza del file*/
 	recvfrom(socketone, buffer, DIMENSIONE_MESSAGGI, 0, (SA *) &servaddr, &len);
 	int dim_file=atoi(buffer);
