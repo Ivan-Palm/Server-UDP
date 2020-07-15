@@ -253,9 +253,12 @@ int main(){
 				//signal(SIGUSR2, child_exit);//Gestione della chiusira del server, manda un messaggio di chiusura verso il client
 				/*Entro nel ciclo di ascolto infinito*/
 				while(1){
+					REQUEST:
 					bzero(buffer, MAX_DIM_MESSAGE);//Pulisco il buffer
+					printf("VALORE BUFFER %s\n",buffer);
+					printf("SONO QUI\n");
 					/*Vado in attesa di un messaggio*/
-					if(recvfrom(socketone, buffer, MAX_DIM_MESSAGE, 0, (struct sockaddr *) &servaddr, &len) < 0){
+					if(recvfrom(socketone, buffer, sizeof(buffer), 0, (struct sockaddr *) &servaddr, &len) < 0){
 						if (errno==EAGAIN)
 						{
 							return 0;
@@ -264,6 +267,7 @@ int main(){
 							herror("c_errorore nella recvfrom del secondo while del main del server.");
 						}
 					}
+					printf("VALORE BUFFER %s\n",buffer);
 					/*Gestisco la richiesta del client*/
 					/*Caso exit*/
 					if(strncmp("1", buffer, strlen("1")) == 0){
@@ -279,6 +283,7 @@ int main(){
 					else if(strncmp("2", buffer, strlen("2")) == 0){
 						printf("Client port %d -> Richiesto list\n",port_client);
 						f_lista(socketone,servaddr,len);
+						bzero(buffer, MAX_DIM_MESSAGE);
 					}
 					
 					/*Caso download*/
@@ -290,6 +295,7 @@ int main(){
 						f_lista(socketone,servaddr,len);
 						f_download(socketone,servaddr,len);	
 						bzero(buffer, MAX_DIM_MESSAGE);
+						goto REQUEST;
 					}	
 					/*Caso upload*/
 					
@@ -323,6 +329,7 @@ void f_upload(int socketone, struct sockaddr_in servaddr, socklen_t len){
 
 
 void f_download(int socketone, struct sockaddr_in servaddr, socklen_t len){
+	num=0;
 	/*Ricevo dal client il file richiesto*/
 	bzero(buffer, MAX_DIM_MESSAGE);
 	// ricevo il messaggio dal client con il nome del file da aprire
@@ -349,6 +356,7 @@ void f_download(int socketone, struct sockaddr_in servaddr, socklen_t len){
 	size = lseek(fd, 0, SEEK_END);
     num_pacchetti = (ceil((size/DIM_PACK)))+1;
     printf("PACKET COUNT :%d",num_pacchetti);
+	printf("Ho ricevuto un file di lunghezza %d\n",size);
  	lseek(fd, 0, 0);
  	// pulisco il buffer e ci salvo la lunghezza del file
  	bzero(buffer, MAX_DIM_MESSAGE);
@@ -404,28 +412,20 @@ void f_download(int socketone, struct sockaddr_in servaddr, socklen_t len){
 
 	//if(offset > 0){//Numoero di pacchetti da inviare "multipli di WINDOWS_SIZE"*/
 	/*Se ci sono pacchetti "multipli di WINDOWS_SIZE" da inviare invio quelli*/
-		if(num_pacchetti-seq >= offset){
-			while(seq<num_pacchetti - offset){//fino a quando non sono arrivato al primo pack "NON multiplo di WINDOWS_SIZE"
-				printf("SEQ --> %d; NUM_PACCHETTI --> %d\n",seq,num_pacchetti);
-				printf("num_pacchetti= %d\t\t seq= %d\t\t  di cui offset= %d\t\t\n", num_pacchetti, seq, offset);
-				seq = send_packet_GO_BACK_N(file_struct, seq, DIMENSIONE_FINESTRA);//mando la struttura contenente i pacchetti, la sequenza, e la dimensione della finestra
-			
-			}
-			printf("SONO USCITOP \n");
-			/*Una volta inviati i pacchetti "multipli di WINDOWS_SIZE" invio offset pacchetti "NON multipli di WINDOWS_SIZE"*/
-			if(seq<num_pacchetti){		/*Nel caso ne rimangano alcuni, li invio*/
-			seq = send_packet_GO_BACK_N(file_struct, seq, offset);//mando la struttura contenente i pacchetti, la sequenza, e il numero di pacchetti rimanenti
-			}
-		}
-		printf("----------------------------------------------------[FINE FASE]----------------------------------------------------\n");
+	if(num_pacchetti-seq >= offset){
+		while(seq<num_pacchetti - offset){//fino a quando non sono arrivato al primo pack "NON multiplo di WINDOWS_SIZE"
+			printf("SEQ --> %d; NUM_PACCHETTI --> %d\n",seq,num_pacchetti);
+			printf("num_pacchetti= %d\t\t seq= %d\t\t  di cui offset= %d\t\t\n", num_pacchetti, seq, offset);
+			seq = send_packet_GO_BACK_N(file_struct, seq, DIMENSIONE_FINESTRA);//mando la struttura contenente i pacchetti, la sequenza, e la dimensione della finestra
 		
-	//}
-	/*Caso in cui il numero dei pacchetti è un multiplo della WINDOWS_SIZE*/
-	//else{
-	//	while(seq < num_pacchetti){
-	//		seq = send_packet_GO_BACK_N(file_struct, seq, DIMENSIONE_FINESTRA);//mando la struttura contenente i pacchetti, la sequenza, e la dimensione della finestra
-	//	}
-	//}
+		}
+		printf("SONO USCITOP \n");
+		/*Una volta inviati i pacchetti "multipli di WINDOWS_SIZE" invio offset pacchetti "NON multipli di WINDOWS_SIZE"*/
+		if(seq<num_pacchetti){		/*Nel caso ne rimangano alcuni, li invio*/
+		seq = send_packet_GO_BACK_N(file_struct, seq, offset);//mando la struttura contenente i pacchetti, la sequenza, e il numero di pacchetti rimanenti
+		}
+	}
+	printf("----------------------------------------------------[FINE FASE]----------------------------------------------------\n");
 	FINISH:
 	printf("Ho finito l'operazione\n");
 	/*Reset delle informaizoni*/
@@ -453,7 +453,7 @@ void recive_UDP_GO_BACK_N(){
 	int offset = num_pack%WINDOW_SIZE; //indica quante ondate di pacchetti devo ricevere 
 	int w_size=WINDOW_SIZE;//w_size prende la dimensione dell WINDOW_SIZE per poi riadattarla in caso di pack "diversi"
 	/*Vado nel ciclo finche non termino i pacchetti*/
-	while(count < num_pack||counter<num_pack-1){
+	while(num < num_pack){
 		/*Inizio a ricevere pacchetti*/
 		/*
 		Entriamo in questo ciclo solo nel caso in cui rimangono al piu offset pacchetti, 
@@ -501,6 +501,7 @@ void recive_UDP_GO_BACK_N(){
 			buff = strtok(pckt_rcvt, s);//divido il pacchetto in piu stringhe divise da s e lo metto in buf tutto segmentato
 			int k = atoi(buff); //i prende il numero di sequenza nell'headewr del pacchetto
 			seq=k;//seq prende il numero di sequenza nell'headewr del pacchetto
+			
 			printf("\n\nMI ASPETTO PACK %d\n\n",num);
 			if(seq!=num){
 				printf("Pacchetto %d ricevuto fuori ordine, ora lo scarto e rimando l'ack di %d\n",seq,(receive-1));
@@ -527,11 +528,14 @@ void recive_UDP_GO_BACK_N(){
 			char *end = &pckt_rcvt[MAX_DIM_MESSAGE];
 			char *substr = (char *)calloc(1, end - start + 1);
 			memcpy(substr, start, end - start);
-			pckt_rcvt_parsed = substr;//pckt_rcv_parsed ha la stringa del pacchetto
-			*/
+			pckt_rcvt_parsed = substr;//pckt_rcvt_parsed ha la stringa del pacchetto*/
 			pckt_rcvt_parsed = "ciao";
+			//free(start);
+			//free(end);
+			//free(substr);
+			//free(c_index);
 			
-			printf("----------------------------------------------------------CONTENUTO PACK %d-esimo:----------------------------------------------------\n%s\n:------------------------------------------------------------------------------------------------------------------------------------------\n",seq,pckt_rcvt_parsed);
+			printf("------------------------------CONTENUTO PACK %d-esimo:------------------------------------\n%s\n:------------------------------------------------------------------------\n",seq,pckt_rcvt_parsed);
 			printf("Sono qui\n");
 			/*Ora devo mandare gli ack */
 			if(sendACK(seq,WINDOW_SIZE)){
@@ -554,6 +558,8 @@ void recive_UDP_GO_BACK_N(){
 				goto CICLO;
 				
 			}
+		//free(pckt_rcvt_parsed);
+			//free(pckt_rcvt);
 			FINE:
 			printf(" ");	
 			}		
@@ -853,7 +859,8 @@ int send_packet_GO_BACK_N(struct pacchetto *file_struct, int seq, int offset){//
 	/*Ciclo for che invia offset pacchetti alla volta*/
 	for(i = 0; i < offset; i++){	
 		if(seq+i>=num_pacchetti){
-				goto FINE;
+				goto WAIT;
+				si=i-1;
 			}
 		//imposto l'ack del pacchetto che sto inviando come 0, lo metterò a 1 una volta ricevuto l'ack dal client
 		/*seq(inzialmente uguale a 0), indica il numero del pack*/
@@ -874,10 +881,16 @@ int send_packet_GO_BACK_N(struct pacchetto *file_struct, int seq, int offset){//
 	}
 	printf("\n--------------------------------------------------------------------------------------------------------\n");
 	/*Entro nella fase di attesa dei riscontri dei pacchetti*/
-	printf("si -> %d\n",si);
+	printf("si -> %d\n",si);/*
 	printf("offset -> %d\n",si);
-	printf("j -> %d\n",si);
+	*/
+	int seq2=seq;
 	for(j = si; j < offset; j++){
+		WAIT:
+		if(seq2+j>=num_pacchetti){
+			seq++;
+			goto FINE;
+		}
 		printf("Attendo ACK [%d]\n",seq+si);
 		bzero(buffer, MAX_DIM_MESSAGE);
 		int err = recvfrom(socketone,buffer, MAX_DIM_MESSAGE, 0, (SA *) &servaddr, &len);//Vado in attesa del riscontro da parte del server
@@ -908,7 +921,7 @@ int send_packet_GO_BACK_N(struct pacchetto *file_struct, int seq, int offset){//
 				file_struct[check].ack = 1; //Imposto l'ack del pacchetto all'interno della struttura uguale a 1, indicando che tale pack è stato riscontrato
 			}
 			if(check!=num){//caso ack diverso da quello che mi aspettavo
-				printf("Ho ricevuto un ack di un pacchetto gia riscontrato o un ack danneggiato, resto in attesa\n\n");
+				printf("Ho ricevuto un ack del pacchetto %d, ma mi aspettavo %d\n\n",check,num);
 				id++;
 			}
 			else{//caso ack uguale a quello aspettato
@@ -933,6 +946,7 @@ int send_packet_GO_BACK_N(struct pacchetto *file_struct, int seq, int offset){//
 			}
 		}
 	}
+
 	FINE:
 	printf("RITORNO SEQ -> %d\n",seq);
 	return seq;

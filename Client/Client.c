@@ -149,6 +149,7 @@ int main() {
 	socketone = creazione_socket(port_number);
 	//Ciclo infinito di richieste
 	while(1){
+		signal(SIGINT,(void*)esci);
 		if(atoi(buffer) == CODICE){
 				perror("ATTENZIONE! Il server non è più in funzione.");
 				return 1;
@@ -158,8 +159,6 @@ int main() {
 
 		//Inserisco nel buffe rla linea di richiesta del client
 		printf("\nComando:");
-		
-		signal(SIGINT,(void*)esci);
 		fgets(buffer, DIMENSIONE_MESSAGGI, stdin);
 		//Verifico se il client vuole uscire o meno dal ciclo
 		if((strncmp("1", buffer, strlen("1"))) == 0){//Caso di uscita
@@ -188,6 +187,7 @@ int main() {
 			//Invio al server l'azione che voglio fare
 			id=0;
 			err = sendto(socketone, buffer, sizeof(buffer), 0, (SA *) &servaddr, len);
+			printf("Ho inviato %s\n",buffer);
 			if (err < 0){
 				perror("Errore nella sendto nella sezione del servizio di upload del client.");
 			}
@@ -351,8 +351,6 @@ int main() {
 			//	}
 			//}
 			
-			
-			
 			FINISH:
 			/*Reset delle informaizoni*/
 			si=0;
@@ -363,30 +361,30 @@ int main() {
 		//CASO DOWNLOAD
 		else if((strncmp("3", buffer, strlen("3"))) == 0) {
 			//Invio al server cosa voglio fare
-			err = sendto(socketone, buffer, sizeof(buffer), 0, (SA *) &servaddr, len);
-			/*attesa rispsta del server*/
 			
+			err = sendto(socketone, buffer, sizeof(buffer), 0, (SA *) &servaddr, len);
+			if (err < 0){
+				perror("Errore nella sendto nella sezione del servizio di upload del client.");
+			}
+			/*attesa rispsta del server*/
 			if(atoi(buffer) == CODICE){
 				perror("ATTENZIONE! Il server non è più in funzione.");
 				return 1;
 			}
 			
-			printf("Stai effettuando il download\n");
+			printf("[DOWNLOAD]----------------------------------------------------------\n");
 			// ricevo la lista di file che posso scaricare
 			err = recvfrom(socketone, buffer, DIMENSIONE_MESSAGGI, 0, (SA *) &servaddr, &len);
 			if (err < 0){
 				perror("Errore nella recvfrom nella sezione del servizio di download del client.");
 			}
-			printf("Download permesso.\n");
+			printf("Download accettato dal server.\n");
 			
 			
 			// Riucevo la lista dei file dal server
-			printf("Lista dei file disponibili nel server:\n%s\n", buffer);
-			
-			
-			
+			printf("[LISTA DEI FILE NEL SERVER]---------------------------------------------------\n%s\n-----------------------------------------------------------------------------------------------\n", buffer);
 			bzero(buffer, DIMENSIONE_MESSAGGI);
-			printf("Inserisci il nome del file da scaricare...\n");
+			printf("Inserisci il nome del file da scaricare: ");
 			
 			
 			// riempio il buffer con la stringa inserita in stdin
@@ -414,6 +412,7 @@ int main() {
 			// pulisco il buffer
 			bzero(buffer, DIMENSIONE_MESSAGGI);
 			reception_data();
+			bzero(buffer, DIMENSIONE_MESSAGGI);
 		}
 		//CASO INPUT ERRATO
 		else{
@@ -449,7 +448,7 @@ void reception_data(){
 	Mediante la chiamata ceil:
 	La funzione restituisce il valore integrale più piccolo non inferiore a x .
 	*/
-	num_pacchetti = (ceil((dim_file/DIMENSIONE_MESSAGGI))) + 1;
+	num_pacchetti = (ceil((dim_file/DIMENSIONE_PACCHETTO))) + 1;
 	printf("Numero pacchetti da ricevere: %d.\n", num_pacchetti);
 	/*
 	Utilizzo questa tecnica per capire quanti pacchetti dovrò ricevere
@@ -508,9 +507,6 @@ int creazione_socket(int c_port){
 	if(socketone == -1){
 		perror("ATTENZIONE! Creazione della socket fallita...");
 	}
-	else{
-		printf("Socket creata correttamente...\n");
-	}
 	// pulisco la memoria allocata per la struttura
 	bzero(&servaddr, sizeof(servaddr));
 	// setto i parametri della struttura
@@ -531,6 +527,9 @@ Stampo la lista su stdout
 void lista_dei_file(int socketone, struct sockaddr_in servaddr, socklen_t len){
 	//Invio al server cosa voglio fare
 	err = sendto(socketone, buffer, sizeof(buffer), 0, (SA *) &servaddr, len);
+	if (err < 0){
+				perror("Errore nella sendto nella sezione del servizio di list del client.");
+			}
 	/*attesa rispsta del server*//*restituira dentro buffer la lista degliu elementi disponibili*/
 	bzero(buffer,DIMENSIONE_MESSAGGI);
 	recvfrom(socketone,buffer,sizeof(buffer),0,(SA *) &servaddr, &len);
@@ -556,9 +555,10 @@ int send_packet_GO_BACK_N(struct inside_the_package *file_struct, int seq, int o
 	printf("\n--------------------------------------------------------------------------------------------------------\n");
 	/*Ciclo for che invia offset pacchetti alla volta*/
 	for(i = 0; i < offset; i++){	
-		if(seq+i>=num_pacchetti){
-			goto FINE;
-		}
+			if(seq+i>=num_pacchetti){
+				goto WAIT;
+				si=i-1;
+			}
 		//imposto l'ack del pacchetto che sto inviando come 0, lo metterò a 1 una volta ricevuto l'ack dal client
 		/*seq(inzialmente uguale a 0), indica il numero del pack*/
 		file_struct[seq+i].ack = 0;
@@ -577,8 +577,14 @@ int send_packet_GO_BACK_N(struct inside_the_package *file_struct, int seq, int o
 		
 	}
 	printf("\n--------------------------------------------------------------------------------------------------------\n");
+	int seq2=seq;
 	/*Entro nella fase di attesa dei riscontri dei pacchetti*/
 	for(j = si; j < offset; j++){
+		WAIT:
+		if(seq2+j>=num_pacchetti){
+			seq++;
+			goto FINE;
+		}
 		printf("Attendo ACK [%d]\n",seq+si);
 		bzero(buffer, DIMENSIONE_MESSAGGI);
 		int err = recvfrom(socketone,buffer, DIMENSIONE_MESSAGGI, 0, (SA *) &servaddr, &len);//Vado in attesa del riscontro da parte del server
@@ -609,7 +615,7 @@ int send_packet_GO_BACK_N(struct inside_the_package *file_struct, int seq, int o
 				file_struct[check].ack = 1; //Imposto l'ack del pacchetto all'interno della struttura uguale a 1, indicando che tale pack è stato riscontrato
 			}
 			if(check!=num){//caso ack diverso da quello che mi aspettavo
-				printf("Ho ricevuto un ack di un pacchetto gia riscontrato o un ack danneggiato, resto in attesa\n\n");
+				printf("Ho ricevuto un ack del pacchetto %d, ma mi aspettavo %d\n\n",check,num);
 				id++;
 			}
 			else{//caso ack uguale a quello aspettato
@@ -677,7 +683,7 @@ void recive_UDP_GO_BACK_N(){
 	int offset = num_pacchetti%DIMENSIONE_FINESTRA; //indica quante ondate di pacchetti devo ricevere 
 	int w_size=DIMENSIONE_FINESTRA;//w_size prende la dimensione dell DIMENSIONE_FINESTRA per poi riadattarla in caso di pack "diversi"
 	/*Vado nel ciclo finche non termino i pacchetti*/
-	while(count < num_pacchetti||counter<num_pacchetti-1){
+	while(num < num_pacchetti){
 		/*Inizio a ricevere pacchetti*/
 		/*
 		Entriamo in questo ciclo solo nel caso in cui rimangono al piu offset pacchetti, 
@@ -741,14 +747,14 @@ void recive_UDP_GO_BACK_N(){
 			if(seq >= count){
 				count = seq + 1;
 			}
-			printf("\t\t\t\tHo ricevuto il pacchetto %d\n",seq);
+			printf("\t\t\t\t\t[HO RICEVUTO IL PACCHETTO] %d\n",seq);
 			 //indico che è lui il nuovo pacchetto ricevuto
 			/*
 			La funzione restituisce la sottostringa del pacchetto -> PASSA MALE IL CONTENUTO
 			contentente il messaggio vero e proprio
 			*/
-			/*
-			char *c_index;
+			
+			/*char *c_index;
 			sprintf(c_index, "%d", seq);
 			int st = strlen(c_index) + 1;
 			char *start = &pckt_rcv[st];
@@ -756,8 +762,13 @@ void recive_UDP_GO_BACK_N(){
 			char *substr = (char *)calloc(1, end - start + 1);
 			memcpy(substr, start, end - start);
 			pckt_rcv_parsed = substr;//pckt_rcv_parsed ha la stringa del pacchetto*/
+			//free(start);
+			//free(end);
+			//free(substr);
+			//free(c_index);
+			
 			pckt_rcv_parsed="come stai";
-			printf("-----------------------------------------CONTENUTO PACK %d-esimo:-----------------------------------------\n%s\n-----------------------------------------------------------------------------------------------------------\n",seq,pckt_rcv_parsed);
+			printf("/----------------------------------------[CONTENUTO PACK %d-ESIMO]----------------------------------------\\n%s\n/-----------------------------------------------------------------------------------------------------------\\n",seq,pckt_rcv_parsed);
 			
 			/*Ora devo mandare gli ack */
 			if(sendACK(seq,DIMENSIONE_FINESTRA)){
@@ -780,6 +791,8 @@ void recive_UDP_GO_BACK_N(){
 				goto CICLO;
 				
 			}
+			//free(pckt_rcv_parsed);
+			//free(pckt_rcv);
 			FINE:
 			printf(" ");	
 			}		
@@ -801,9 +814,7 @@ int sendACK(int seq,int WINDOW_SIZE){
 		loss_prob = L_PROB;
 	}
 	int random = num_random(); 
-	printf("Numero random scelto: %d\n",random);
 	if(random < (100 - loss_prob)) {
-		printf("Sto inviando l'ACK: %d.\n", seq);
 		c_error = sendto(socketone, buffer, DIMENSIONE_MESSAGGI, 0, (SA *) &servaddr, len);
 		bzero(buffer, DIMENSIONE_MESSAGGI);
 		if(c_error < 0){
