@@ -77,6 +77,7 @@ char *file_da_ricevere;
 char **buff_file;
 int id=0;
 int c_error; //variabile per la gestione degli errori
+int exist=0; //per vedere se un file è gia esistente
 
 
 int main() {
@@ -265,8 +266,9 @@ int main() {
 			printf("[INFORMAZIONI PRELIMINARI]------------------------------------------------\n");
 			/*Calcolo quanti pacchetti devo inviare al server*/
 			dim = lseek(file_inv, 0, SEEK_END);
-			num_pacchetti = (ceil((dim/DIMENSIONE_PACCHETTO)))+1;
+			num_pacchetti = (ceil((dim/DIMENSIONE_PACCHETTO)));
 			printf("Numero di pacchetti da caricare: %d.\n", num_pacchetti);
+			printf("File di lunghezza %d\n",dim);
 			lseek(file_inv, 0, 0);
 			bzero(buffer, DIMENSIONE_MESSAGGI);
 			
@@ -280,15 +282,16 @@ int main() {
 			}			
 			
 			
-			/*DA QUI *//*IVAN REMEBRER*/
-			
-			
 			/*Inizio il caricamento del file*/
 			struct inside_the_package file_struct[num_pacchetti];//creo tanti pacchetti quanti calcolati prima con num_pacchetti
-			
+			for(int i = 0; i < num_pacchetti; i++){
+				bzero(file_struct[i].buf, DIMENSIONE_MESSAGGI);
+			}
 			/*Creo un buffer avente la dimensione pari ad un pacchetto*/
 			char *temp_buf;
 			temp_buf = malloc(DIMENSIONE_PACCHETTO);//temp_buf ha la dimensione di un pacchetto
+			
+			
 			for (int i = 0; i < num_pacchetti; i++){//ciclo for ripetuto per tutti i pacchetti
 			
 				bzero(temp_buf, DIMENSIONE_PACCHETTO);//pulisco tempo_buf
@@ -303,12 +306,12 @@ int main() {
 				sprintf(file_struct[i].buf, "%s", pacchetto);//Riscrivo quello appena creato nella struttura nella posizione i-esima
 				
 				file_struct[i].numero_ordine = i;//assegno l'indice i-esimo all'entry in quella struttura
-				
-			
+	
 			}
+			printf("[CONTENUTO FILE_STRUCT]------------------------------------------------\n");
 			/*Stampo l'inter struttura*/
 			for (int i = 0; i < num_pacchetti; i++){
-				printf("\nFILE_STRUCT[%d].BUF contiene :-------------------------------------------------\n%s\n--------------------------------------------------------------\n",i,file_struct[i].buf);
+				printf("\nFILE_STRUCT[%d].BUF contiene :\n%s\n--------------------------------------------------------------\n",i,file_struct[i].buf);
 			}
 			
 			/*Da qui in poi ho tutti i pacchetti salvati nella struttura*/
@@ -366,6 +369,7 @@ int main() {
 			printf("[DOWNLOAD]----------------------------------------------------------\n");
 			// ricevo la lista di file che posso scaricare
 			err = recvfrom(socketone, buffer, DIMENSIONE_MESSAGGI, 0, (SA *) &servaddr, &len);
+			char *listfile=buffer;
 			if (err < 0){
 				perror("Errore nella recvfrom nella sezione del servizio di download del client.");
 			}
@@ -373,8 +377,9 @@ int main() {
 			
 			
 			// Riucevo la lista dei file dal server
-			printf("[LISTA DEI FILE NEL SERVER]---------------------------------------------------\n%s\n-----------------------------------------------------------------------------------------------\n", buffer);
+			printf("[LISTA DEI FILE NEL SERVER]---------------------------------------------------\n%s\n--------------------------------------------------------------------------------\n", buffer);
 			bzero(buffer, DIMENSIONE_MESSAGGI);
+			REQUEST:
 			printf("Inserisci il nome del file da scaricare: ");
 			
 			
@@ -399,6 +404,11 @@ int main() {
 			err = recvfrom(socketone, buffer, DIMENSIONE_MESSAGGI, 0, (SA *) &servaddr, &len);
 			if (err < 0){
 				perror("Errore nella recvfrom nella sezione del servizio di download del client.");
+			}
+			if(strcmp(buffer,"not_exist")==0){
+				printf("Il file non esiste sul server\n");
+				bzero(buffer, DIMENSIONE_MESSAGGI);
+				goto REQUEST;
 			}
 			// pulisco il buffer
 			bzero(buffer, DIMENSIONE_MESSAGGI);
@@ -439,7 +449,7 @@ void reception_data(){
 	Mediante la chiamata ceil:
 	La funzione restituisce il valore integrale più piccolo non inferiore a x .
 	*/
-	num_pacchetti = (ceil((dim_file/DIMENSIONE_PACCHETTO))) + 1;
+	num_pacchetti = (ceil((dim_file/DIMENSIONE_PACCHETTO)));
 	printf("Numero pacchetti da ricevere: %d.\n", num_pacchetti);
 	/*
 	Utilizzo questa tecnica per capire quanti pacchetti dovrò ricevere
@@ -451,9 +461,10 @@ void reception_data(){
 			herror("c_errorore nella mmap del buff_file della receive_name_and_len_file del server.");
 		}
     }
-    
+	
 	int fd = open(file_name, O_CREAT|O_RDWR, 0666);
 	printf("Inizio a ricevere i pacchetti con GO-BACK-N\n\n\n");
+	JUMP:
 	recive_UDP_GO_BACK_N();	
 	printf("\n\n[RICEZIONE TERMINATA CORRETTAMENTE]-----------------------------------------\n");
 	
@@ -740,7 +751,7 @@ void recive_UDP_GO_BACK_N(){
 			contentente il messaggio vero e proprio
 			*/
 			
-			/*char *c_index;
+			char *c_index;
 			sprintf(c_index, "%d", seq);
 			int st = strlen(c_index) + 1;
 			char *start = &pckt_rcv[st];
@@ -753,7 +764,7 @@ void recive_UDP_GO_BACK_N(){
 			//free(substr);
 			//free(c_index);
 			
-			pckt_rcv_parsed="come stai";
+			//pckt_rcv_parsed="come stai";
 			printf("\t\t\t\t\t[CONTENUTO PACK %d-ESIMO]\n%s\n-----------------------------------------------------------------------------------------------------------\n",seq,pckt_rcv_parsed);
 			
 			/*Ora devo mandare gli ack */
@@ -777,7 +788,7 @@ void recive_UDP_GO_BACK_N(){
 				goto CICLO;
 				
 			}
-			//free(pckt_rcv_parsed);
+			free(pckt_rcv_parsed);
 			//free(pckt_rcv);
 			FINE:
 			printf(" ");	

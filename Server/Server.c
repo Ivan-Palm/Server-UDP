@@ -91,6 +91,7 @@ int c_error; 	// intero per il controllo della gestione d'c_errorore
 int parent; //pid del processo padre
 int num_pacchetti;
 int id=0;
+int exist=0; //per vedere se un file è gia esistente
 
 
 int decrement_client(int *utenti_connessi){
@@ -334,10 +335,16 @@ void f_download(int socketone, struct sockaddr_in servaddr, socklen_t len){
 	num=0;
 	/*Ricevo dal client il file richiesto*/
 	bzero(buffer, MAX_DIM_MESSAGE);
+	
+	WAIT_FILE:
 	// ricevo il messaggio dal client con il nome del file da aprire
 	if(recvfrom(socketone, buffer, MAX_DIM_MESSAGE,0, (struct sockaddr *) &servaddr, &len) < 0){
 		herror("Errore nella recvfrom della get_name_and_size_file del server.");
 	}
+	
+	
+	
+	
 	// pulisco il buffer dal terminatore di stringa
 	int l = strlen(buffer);
 	if(buffer[l-1] == '\n'){
@@ -348,15 +355,26 @@ void f_download(int socketone, struct sockaddr_in servaddr, socklen_t len){
 	int fd = open(buffer, O_RDONLY, 0666); /*FILE*/
     if(fd == -1){
     	printf("Attenzione! Ricevuto un nome sbagliato\n");
+		/*Mando il nome*//*Oppure not_exist se non esiste*/
+		if(sendto(socketone,"not_exist", MAX_DIM_MESSAGE, 0, (struct sockaddr *) &servaddr, len) < 0) { 
+			herror("Errore nella sendto della send_name del server.");
+		}
+		bzero(buffer, MAX_DIM_MESSAGE);
+		goto WAIT_FILE;
+		
 	}
-	/*Mando il nome*/
+	
+	
+	
+	
+	/*Mando il nome*//*Oppure not_exist se non esiste*/
 	if(sendto(socketone,buffer, MAX_DIM_MESSAGE, 0, (struct sockaddr *) &servaddr, len) < 0) { 
 		herror("Errore nella sendto della send_name del server.");
 	}
 	
 	/*Calcolo il numero di pacchetti da inviare*/
 	size = lseek(fd, 0, SEEK_END);
-    num_pacchetti = (ceil((size/DIM_PACK)))+1;
+    num_pacchetti = (ceil((size/DIM_PACK)));
 	printf("[INFORMAZIONI PRELIMINARI]------------------------------------------------\n");
     printf("Numero di pacchetti :%d\n",num_pacchetti);
 	printf("Ho ricevuto un file di lunghezza %d\n",size);
@@ -377,10 +395,11 @@ void f_download(int socketone, struct sockaddr_in servaddr, socklen_t len){
 	for(int i = 0; i < num_pacchetti; i++){
 		bzero(file_struct[i].buf, MAX_DIM_MESSAGE);
 	}
-	int counter = 0;
 	/*Creo un buffer avente la dimensione pari ad un pacchetto*/
 	char *temp_buf;
 	temp_buf = malloc(DIM_PACK);//temp_buf ha la dimensione di un pacchetto
+	
+	
 	for (int i = 0; i < num_pacchetti; i++){//ciclo for ripetuto per tutti i pacchetti
 			
 		bzero(temp_buf, DIM_PACK);//pulisco tempo_buf
@@ -651,7 +670,7 @@ void reception_data(){
 	Mediante la chiamata ceil:
 	La funzione restituisce il valore integrale più piccolo non inferiore a x .
 	*/
-	num_pack = (ceil((dim_file/DIM_PACK))) + 1;
+	num_pack = (ceil((dim_file/DIM_PACK)));
 	printf("Numero pacchetti da ricevere: %d.\n", num_pack);
 	/*
 	Utilizzo questa tecnica per capire quanti pacchetti dovrò ricevere
@@ -669,7 +688,6 @@ void reception_data(){
 	if(file == -1){
 		herror("c_errorore nella open in create_local_file del server.");
 	}
-	printf("Ho creato il file.\n");
 	printf("Inizio a ricevere i pacchetti con GO-BACK-N\n");
 	recive_UDP_GO_BACK_N();	
 	printf("Ricezione terminata correttamente.\n");
@@ -685,6 +703,7 @@ void reception_data(){
 	FILE *f;
 	f=fopen("lista.txt","a");
 	fprintf(f, "\n%s", pathname); 
+	exist=0;
 	printf("File list aggiornato correttamente.\n[OPERAZIONE COMPLETATA CON SUCCESSO]\n");
 	fclose(f);
 	return;
