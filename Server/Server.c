@@ -374,7 +374,7 @@ void f_download(int socketone, struct sockaddr_in servaddr, socklen_t len){
 	
 	/*Calcolo il numero di pacchetti da inviare*/
 	size = lseek(fd, 0, SEEK_END);
-    num_pacchetti = (ceil((size/DIM_PACK)));
+    num_pacchetti = (ceil((size/DIM_PACK)))+1;
 	printf("[INFORMAZIONI PRELIMINARI]------------------------------------------------\n");
     printf("Numero di pacchetti :%d\n",num_pacchetti);
 	printf("Ho ricevuto un file di lunghezza %d\n",size);
@@ -403,8 +403,8 @@ void f_download(int socketone, struct sockaddr_in servaddr, socklen_t len){
 	for (int i = 0; i < num_pacchetti; i++){//ciclo for ripetuto per tutti i pacchetti
 			
 		bzero(temp_buf, DIM_PACK);//pulisco tempo_buf
-		read(fd, temp_buf, DIM_PACK);//leggo quanto possibile da incapsulare in un pacchetto
-		
+		int red=read(fd, temp_buf, DIM_PACK);//leggo quanto possibile da incapsulare in un pacchetto
+		printf("Ho letto %d\n",red);
 		/*Creo un array di dimensione pari ad un pacchetto*/
 		char pacchetto[MAX_DIM_MESSAGE];
 		
@@ -510,7 +510,6 @@ void recive_UDP_GO_BACK_N(){
 					herror("c_errorore nella recvfrom della recive_UDP_rel_file nel client");
 				}
 			}
-			
 			// buff riceve il numero di sequenza messo nel header del pacchetto
 			char *buff;
 			const char s[2] = " ";
@@ -529,8 +528,6 @@ void recive_UDP_GO_BACK_N(){
 				}
 			
 			}
-			
-			
 			if(seq >= count){
 				count = seq + 1;
 			}
@@ -670,7 +667,7 @@ void reception_data(){
 	Mediante la chiamata ceil:
 	La funzione restituisce il valore integrale più piccolo non inferiore a x .
 	*/
-	num_pack = (ceil((dim_file/DIM_PACK)));
+	num_pack = (ceil((dim_file/DIM_PACK)))+1;
 	printf("Numero pacchetti da ricevere: %d.\n", num_pack);
 	/*
 	Utilizzo questa tecnica per capire quanti pacchetti dovrò ricevere
@@ -868,8 +865,9 @@ int send_packet_GO_BACK_N(struct pacchetto *file_struct, int seq, int offset){//
 	/*Ciclo for che invia offset pacchetti alla volta*/
 	for(i = 0; i < offset; i++){	
 		if(seq+i>=num_pacchetti){
+				//si=i-1;
 				goto WAIT;
-				si=i-1;
+				
 			}
 		//imposto l'ack del pacchetto che sto inviando come 0, lo metterò a 1 una volta ricevuto l'ack dal client
 		/*seq(inzialmente uguale a 0), indica il numero del pack*/
@@ -893,8 +891,7 @@ int send_packet_GO_BACK_N(struct pacchetto *file_struct, int seq, int offset){//
 	int seq2=seq;
 	for(j = si; j < offset; j++){
 		WAIT:
-		if(seq2+j>=num_pacchetti){
-			seq++;
+		if(seq>=num_pacchetti){
 			goto FINE;
 		}
 		printf("Attendo ACK [%d]\n",seq+si);

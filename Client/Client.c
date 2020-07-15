@@ -266,7 +266,7 @@ int main() {
 			printf("[INFORMAZIONI PRELIMINARI]------------------------------------------------\n");
 			/*Calcolo quanti pacchetti devo inviare al server*/
 			dim = lseek(file_inv, 0, SEEK_END);
-			num_pacchetti = (ceil((dim/DIMENSIONE_PACCHETTO)));
+			num_pacchetti = (ceil((dim/DIMENSIONE_PACCHETTO)))+1;
 			printf("Numero di pacchetti da caricare: %d.\n", num_pacchetti);
 			printf("File di lunghezza %d\n",dim);
 			lseek(file_inv, 0, 0);
@@ -449,7 +449,7 @@ void reception_data(){
 	Mediante la chiamata ceil:
 	La funzione restituisce il valore integrale più piccolo non inferiore a x .
 	*/
-	num_pacchetti = (ceil((dim_file/DIMENSIONE_PACCHETTO)));
+	num_pacchetti = (ceil((dim_file/DIMENSIONE_PACCHETTO)))+1;
 	printf("Numero pacchetti da ricevere: %d.\n", num_pacchetti);
 	/*
 	Utilizzo questa tecnica per capire quanti pacchetti dovrò ricevere
