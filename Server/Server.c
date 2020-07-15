@@ -61,6 +61,7 @@ int decrement_client(int*);
 void *exit_p();
 void setTimeout(double,int);
 int send_packet_GO_BACK_N(struct pacchetto *, int , int );
+char * parsed(int , char []);
 
 
 
@@ -532,8 +533,11 @@ void recive_UDP_GO_BACK_N(){
 			if(seq >= count){
 				count = seq + 1;
 			}
-			printf("Ho ricevuto il pacchetto %d\n",seq);
+			printf("--------------------------------------[HO RICEVUTO IL PACCHETTO %d]------------------------------------\n",seq);
 			//Da un problema in questo punto
+			
+			
+			pckt_rcvt_parsed=parsed(seq,pckt_rcvt);
 			/*
 			char *c_index;
 			sprintf(c_index, "%d", seq);
@@ -542,8 +546,9 @@ void recive_UDP_GO_BACK_N(){
 			char *end = &pckt_rcvt[MAX_DIM_MESSAGE];
 			char *substr = (char *)calloc(1, end - start + 1);
 			memcpy(substr, start, end - start);
-			pckt_rcvt_parsed = substr;//pckt_rcvt_parsed ha la stringa del pacchetto*/
-			pckt_rcvt_parsed = "ciao";
+			pckt_rcvt_parsed = substr;
+			/*pckt_rcvt_parsed ha la stringa del pacchetto*/
+			//pckt_rcvt_parsed = "ciao";
 			//free(start);
 			//free(end);
 			//free(substr);
@@ -571,7 +576,7 @@ void recive_UDP_GO_BACK_N(){
 				goto CICLO;
 				
 			}
-		//free(pckt_rcvt_parsed);
+			free(pckt_rcvt_parsed);
 			//free(pckt_rcvt);
 			FINE:
 			printf(" ");	
@@ -580,6 +585,17 @@ void recive_UDP_GO_BACK_N(){
 	return;
 }
 
+
+char * parsed(int seq, char pckt_rcvt[]){
+		char *c_index;
+		sprintf(c_index, "%d", seq);
+		int st = strlen(c_index) + 1;
+		char *start = &pckt_rcvt[st];
+		char *end = &pckt_rcvt[MAX_DIM_MESSAGE];
+		char *substr = (char *)calloc(1, end - start + 1);
+		memcpy(substr, start, end - start);
+		return substr;
+}
 
 /*
 Funzione per l'invio dell'ACK;prendo in input il numero di sequenza del pacchetto
