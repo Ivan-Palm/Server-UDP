@@ -152,7 +152,6 @@ void define_num_client(){
 
 int main(){
 	signal(SIGINT,(void*)exit_p);//esco nel caso il child termina
-	//signal(SIGCHLD,(void*)exit_p);//esco nel caso di cntl+c
 	show_port();
 	define_num_client();
 	/*Salvo il pid del processo padre in una variabile globale*/
@@ -160,19 +159,6 @@ int main(){
 	
 	//creo la socket di comunicazione per i child
 	s_socketone = creazione_socket(PORT);
-	
-	
-	/*//creo un processo che gestisce l'eventuale richiesta di chiusura del server-->1° Child creato per la gestione della chiusura
-	pid_t pid = fork();
-	if(pid == 0){
-		signal(SIGINT,(void*)exit_t); //Se viene premuto ctlt+c viene passato il controllo ad esci e viene inviato al padre il segnale di uscita
-	}
-	parent = pid; //il padre prende il pid parent
-	*/
-	
-	
-	//entro nel ciclo infinito di accoglienza di richieste
-	//imposto i segnali
 	
 	
 	while(1){
@@ -247,12 +233,8 @@ int main(){
 				*/
 				signal(SIGINT,(void*)exit_t);
 				socketone = creazione_socket(port_client);//apro
-				chiudi_socket(s_socketone);/*Chiudo la socket non utilizzata dal child ereditata dal parent*/
-				
+				chiudi_socket(s_socketone);/*Chiudo la socket non utilizzata dal child ereditata dal parent*/			
 				/*creo i segnali per la gestione del child*/
-				//signal(SIGCHLD, SIG_IGN);
-				//signal(SIGUSR1, SIG_IGN);
-				//signal(SIGUSR2, child_exit);//Gestione della chiusira del server, manda un messaggio di chiusura verso il client
 				/*Entro nel ciclo di ascolto infinito*/
 				while(1){
 					REQUEST:
@@ -293,7 +275,6 @@ int main(){
 					else if(strncmp("3", buffer, strlen("3")) == 0){
 						printf("Client port %d -> Richiesto download\n",port_client);
 						printf("[FASE DOWNLOAD]\n");
-						//func_download(socketone,servaddr,len);
 						bzero(buffer, MAX_DIM_MESSAGE);
 						/*Invio la lista dei file al client*/
 						f_lista(socketone,servaddr,len);
@@ -309,11 +290,6 @@ int main(){
 						f_upload(socketone,servaddr,len);
 						bzero(buffer, MAX_DIM_MESSAGE);
 						goto REQUEST;
-					}
-					
-					/*Caso c_errorore*/
-					else{
-						//func_c_erroror(socketone,servaddr,len);
 					}
 				}
 				
@@ -442,8 +418,6 @@ void f_download(int socketone, struct sockaddr_in servaddr, socklen_t len){
 	int offset = (num_pacchetti)%DIMENSIONE_FINESTRA;
 	/*Caso in cui il numero dei pacchetti da inviare in maniera diversa perche non sono un multipli della WINDOWS_SIZE*/
 	
-
-	//if(offset > 0){//Numoero di pacchetti da inviare "multipli di WINDOWS_SIZE"*/
 	/*Se ci sono pacchetti "multipli di WINDOWS_SIZE" da inviare invio quelli*/
 	if(num_pacchetti-seq >= offset){
 		while(seq<num_pacchetti - offset){//fino a quando non sono arrivato al primo pack "NON multiplo di WINDOWS_SIZE"	
@@ -527,8 +501,6 @@ void recive_UDP_GO_BACK_N(){
 			buff = strtok(pckt_rcvt, s);//divido il pacchetto in piu stringhe divise da s e lo metto in buf tutto segmentato
 			int k = atoi(buff); //i prende il numero di sequenza nell'headewr del pacchetto
 			seq=k;//seq prende il numero di sequenza nell'headewr del pacchetto
-			
-			//printf("\n\nMI ASPETTO PACK %d\n\n",num);
 			if(seq!=num){
 				printf("Pacchetto %d ricevuto fuori ordine, ora lo scarto e rimando l'ack di %d\n",seq,(receive-1));
 				if(sendACK((receive-1),WINDOW_SIZE)){//invio l'ack del pacchetto antecedente a quello che mi sarei aspettato
@@ -543,9 +515,6 @@ void recive_UDP_GO_BACK_N(){
 				count = seq + 1;
 			}
 			printf("--------------------------------------[HO RICEVUTO IL PACCHETTO %d]------------------------------------\n",seq);
-			//Da un problema in questo punto
-			
-			
 			pckt_rcvt_parsed=parsed(seq,pckt_rcvt);
 
 			
@@ -572,7 +541,6 @@ void recive_UDP_GO_BACK_N(){
 				
 			}
 			free(pckt_rcvt_parsed);
-			//free(pckt_rcvt);
 			FINE:
 			printf(" ");	
 			}		
@@ -883,7 +851,6 @@ int send_packet_GO_BACK_N(struct pacchetto *file_struct, int seq, int offset){//
 	/*Ciclo for che invia offset pacchetti alla volta*/
 	for(i = 0; i < offset; i++){	
 		if(seq+i>=num_pacchetti){
-				//si=i-1;
 				goto WAIT;
 				
 			}

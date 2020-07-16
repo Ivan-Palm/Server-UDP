@@ -506,7 +506,6 @@ int creazione_socket(int c_port){
 	// setto i parametri della struttura
 	servaddr.sin_family=AF_INET;
 	servaddr.sin_addr.s_addr=htonl(INADDR_ANY);
-	//servaddr.sin_addr.s_addr=inet_addr("127.0.0.1");
 	servaddr.sin_port=htons(c_port);
 	// binding della socket con controllo d'errore
 	return c_socketone;
@@ -745,7 +744,6 @@ void recive_UDP_GO_BACK_N(){
 			/*
 			*/
 			pckt_rcv_parsed = parsed(seq,pckt_rcv);
-			//pckt_rcv_parsed="come stai";*/
 			printf("\t\t\t\t\t[CONTENUTO PACK %d-ESIMO]\n%s\n-----------------------------------------------------------------------------------------------------------\n",seq,pckt_rcv_parsed);
 			
 			/*Ora devo mandare gli ack */
@@ -770,7 +768,6 @@ void recive_UDP_GO_BACK_N(){
 				
 			}
 			free(pckt_rcv_parsed);
-			//free(pckt_rcv);
 			FINE:
 			printf(" ");	
 			}		
