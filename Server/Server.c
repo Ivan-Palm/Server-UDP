@@ -259,7 +259,6 @@ int main(){
 					bzero(buffer, MAX_DIM_MESSAGE);//Pulisco il buffer
 					/*Vado in attesa di un messaggio*/
 					memset(buffer,0,MAX_DIM_MESSAGE);
-					printf("Mi ha chiesto %s",buffer);
 					if(recvfrom(socketone, buffer, sizeof(buffer), 0, (struct sockaddr *) &servaddr, &len) < 0){
 						if (errno==EAGAIN)
 						{
@@ -269,7 +268,6 @@ int main(){
 							herror("c_errorore nella recvfrom del secondo while del main del server.");
 						}
 					}
-					printf("Mi ha chiesto %s",buffer);
 					/*Gestisco la richiesta del client*/
 					/*Caso exit*/
 					if(strncmp("1", buffer, strlen("1")) == 0){
@@ -337,16 +335,24 @@ void f_upload(int socketone, struct sockaddr_in servaddr, socklen_t len){
 
 
 void f_download(int socketone, struct sockaddr_in servaddr, socklen_t len){
+	WAIT_FILE:
 	num=0;
 	/*Ricevo dal client il file richiesto*/
 	bzero(buffer, MAX_DIM_MESSAGE);
 	
-	WAIT_FILE:
+	
 	// ricevo il messaggio dal client con il nome del file da aprire
 	if(recvfrom(socketone, buffer, MAX_DIM_MESSAGE,0, (struct sockaddr *) &servaddr, &len) < 0){
-		herror("Errore nella recvfrom della get_name_and_size_file del server.");
+		if (errno==EAGAIN)
+		{
+			goto WAIT_FILE;
+		}
+		else{
+			herror("Errore nella recvfrom della get_name_and_size_file del server.");
+		}
+		
 	}
-	
+	printf("ERRNO -> %d",errno);
 	
 	
 	
@@ -541,21 +547,7 @@ void recive_UDP_GO_BACK_N(){
 			
 			
 			pckt_rcvt_parsed=parsed(seq,pckt_rcvt);
-			/*
-			char *c_index;
-			sprintf(c_index, "%d", seq);
-			int st = strlen(c_index) + 1;
-			char *start = &pckt_rcvt[st];
-			char *end = &pckt_rcvt[MAX_DIM_MESSAGE];
-			char *substr = (char *)calloc(1, end - start + 1);
-			memcpy(substr, start, end - start);
-			pckt_rcvt_parsed = substr;
-			/*pckt_rcvt_parsed ha la stringa del pacchetto*/
-			//pckt_rcvt_parsed = "ciao";
-			//free(start);
-			//free(end);
-			//free(substr);
-			//free(c_index);
+
 			
 			printf("------------------------------[CONTENUTO PACK %d-ESIMO]------------------------------------\n%s\n------------------------------------------------------------------------------------\n",seq,pckt_rcvt_parsed);
 			/*Ora devo mandare gli ack */
@@ -585,6 +577,7 @@ void recive_UDP_GO_BACK_N(){
 			printf(" ");	
 			}		
 	}
+	receive=0;
 	return;
 }
 
@@ -656,7 +649,6 @@ In fine aggiorna la lista dei file disponibili sul server
 */
 void reception_data(){
 	START_RECEIVE_LEN:
-	printf("Avviata procedura di ricezione del file\n");
 	bzero(buffer, MAX_DIM_MESSAGE);
 	/*Ricevo il nome del file*/
 	c_error = recvfrom(socketone, buffer, MAX_DIM_MESSAGE, 0, (SA *) &servaddr, &len);
@@ -711,11 +703,15 @@ void reception_data(){
 	recive_UDP_GO_BACK_N();	
 	printf("Ricezione terminata correttamente.\n");
 	
+	
+	/*Funzione che riscrive l'intera struttura nel file*/
 	for(int i = 0; i < num_pack; i++){
-		int ret = write(file, buff_file[i], DIM_PACK);
+		
+		int ret = write(file, buff_file[i], strlen(buff_file[i]));
 		if(ret == -1){
 			herror("c_errorore nella write della write_data_packet_on_local_file del server.");
 		}
+		
 	}
 	printf("File scritto correttamente.\n");
 	/*Aggiorno la lista dei file*/

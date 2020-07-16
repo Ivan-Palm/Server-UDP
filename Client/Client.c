@@ -466,9 +466,9 @@ void reception_data(){
 	printf("Sto creando il file %s\n", file_name);
 
 	
-	
+	/*Funzione che riscrive l'intera struttura nel file*/
 	for(int i = 0; i < num_pacchetti; i++){
-		int ret = write(fd, buff_file[i], DIMENSIONE_MESSAGGI);
+		int ret = write(fd, buff_file[i], strlen(buff_file[i]));
 		if(ret == -1){
 			herror("c_errorore nella write della write_data_packet_on_local_file del server.");
 		}
@@ -483,6 +483,7 @@ void reception_data(){
 	fprintf(f, "\n%s", file_name); 
 	printf("File aggiornato correttamente.\n[OPERAZIONE COMPLETATA CON SUCCESSO]\n");
 	close(fd);
+	num=0;
 	return;
 }
 
