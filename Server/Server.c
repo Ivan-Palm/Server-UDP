@@ -258,11 +258,12 @@ int main(){
 					REQUEST:
 					bzero(buffer, MAX_DIM_MESSAGE);//Pulisco il buffer
 					/*Vado in attesa di un messaggio*/
-					printf("SERVER IN ATTESA DI UN COMANDO DAL CLIENT\n");
+					memset(buffer,0,MAX_DIM_MESSAGE);
+					printf("Mi ha chiesto %s",buffer);
 					if(recvfrom(socketone, buffer, sizeof(buffer), 0, (struct sockaddr *) &servaddr, &len) < 0){
 						if (errno==EAGAIN)
 						{
-							return 0;
+							goto REQUEST;
 						}
 						else{
 							herror("c_errorore nella recvfrom del secondo while del main del server.");
@@ -287,6 +288,7 @@ int main(){
 						printf("[FASE LIST]\n");
 						f_lista(socketone,servaddr,len);
 						bzero(buffer, MAX_DIM_MESSAGE);
+						goto REQUEST;
 					}
 					
 					/*Caso download*/
@@ -308,6 +310,7 @@ int main(){
 						printf("[FASE UPLOAD]\n");
 						f_upload(socketone,servaddr,len);
 						bzero(buffer, MAX_DIM_MESSAGE);
+						goto REQUEST;
 					}
 					
 					/*Caso c_errorore*/
@@ -588,12 +591,14 @@ void recive_UDP_GO_BACK_N(){
 
 char * parsed(int seq, char pckt_rcvt[]){
 		char *c_index;
+		c_index = malloc(DIM_PACK+8);
 		sprintf(c_index, "%d", seq);
 		int st = strlen(c_index) + 1;
 		char *start = &pckt_rcvt[st];
 		char *end = &pckt_rcvt[MAX_DIM_MESSAGE];
 		char *substr = (char *)calloc(1, end - start + 1);
 		memcpy(substr, start, end - start);
+		free(c_index);
 		return substr;
 }
 

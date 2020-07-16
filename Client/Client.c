@@ -52,6 +52,7 @@ int sendACK(int ,int );
 /*Questa funzione serve per creare numeri random da 0 a 100*/
 int num_random();
 int send_packet_GO_BACK_N(struct inside_the_package *, int , int );
+char * parsed(int , char []);
 
 
 
@@ -329,23 +330,17 @@ int main() {
 			
 					while(seq<num_pacchetti - offset){//fino a quando non sono arrivato al primo pack "NON multiplo di WINDOWS_SIZE"
 						seq = send_packet_GO_BACK_N(file_struct, seq, DIMENSIONE_FINESTRA);//mando la struttura contenente i pacchetti, la sequenza, e la dimensione della finestra			
+						bzero(buffer, DIMENSIONE_MESSAGGI);
 					}
 					/*Una volta inviati i pacchetti "multipli di WINDOWS_SIZE" invio offset pacchetti "NON multipli di WINDOWS_SIZE"*/
 					if(seq<num_pacchetti){		/*Nel caso ne rimangano alcuni, li invio*/
 						seq = send_packet_GO_BACK_N(file_struct, seq, offset);//mando la struttura contenente i pacchetti, la sequenza, e il numero di pacchetti rimanenti
+						bzero(buffer, DIMENSIONE_MESSAGGI);
 					}
 				}
 				printf("[FINE FASE]----------------------------------------------------\n");
 				
-			//}
-			/*Caso in cui il numero dei pacchetti è un multiplo della WINDOWS_SIZE*/
-			//else{
-			//	printf("\n PACK NORMALI \n");
-			//	while(seq < num_pacchetti){
-			//		seq = send_packet_GO_BACK_N(file_struct, seq, DIMENSIONE_FINESTRA);//mando la struttura contenente i pacchetti, la sequenza, e la dimensione della finestra
-			//	}
-			//}
-			
+			bzero(buffer, DIMENSIONE_MESSAGGI);
 			FINISH:
 			/*Reset delle informaizoni*/
 			si=0;
@@ -553,10 +548,10 @@ int send_packet_GO_BACK_N(struct inside_the_package *file_struct, int seq, int o
 	printf("\n--------------------------------------------------------------------------------------------------------\n");
 	/*Ciclo for che invia offset pacchetti alla volta*/
 	for(i = 0; i < offset; i++){	
-			if(seq+i>=num_pacchetti){
-				goto WAIT;
-				si=i-1;
-			}
+		if(seq+i>=num_pacchetti){
+			goto WAIT;
+			//si=i-1;
+		}
 		//imposto l'ack del pacchetto che sto inviando come 0, lo metterò a 1 una volta ricevuto l'ack dal client
 		/*seq(inzialmente uguale a 0), indica il numero del pack*/
 		file_struct[seq+i].ack = 0;
@@ -639,6 +634,7 @@ int send_packet_GO_BACK_N(struct inside_the_package *file_struct, int seq, int o
 		}
 	}
 	FINE:
+	bzero(buffer, DIMENSIONE_MESSAGGI);
 	return seq;
 }
 
@@ -746,24 +742,9 @@ void recive_UDP_GO_BACK_N(){
 			printf("--------------------------------------[HO RICEVUTO IL PACCHETTO %d]------------------------------------\n",seq);
 			 //indico che è lui il nuovo pacchetto ricevuto
 			/*
-			La funzione restituisce la sottostringa del pacchetto -> PASSA MALE IL CONTENUTO
-			contentente il messaggio vero e proprio
 			*/
-			
-			char *c_index;
-			sprintf(c_index, "%d", seq);
-			int st = strlen(c_index) + 1;
-			char *start = &pckt_rcv[st];
-			char *end = &pckt_rcv[DIMENSIONE_MESSAGGI];
-			char *substr = (char *)calloc(1, end - start + 1);
-			memcpy(substr, start, end - start);
-			pckt_rcv_parsed = substr;//pckt_rcv_parsed ha la stringa del pacchetto*/
-			//free(start);
-			//free(end);
-			//free(substr);
-			//free(c_index);
-			
-			//pckt_rcv_parsed="come stai";
+			pckt_rcv_parsed = parsed(seq,pckt_rcv);
+			//pckt_rcv_parsed="come stai";*/
 			printf("\t\t\t\t\t[CONTENUTO PACK %d-ESIMO]\n%s\n-----------------------------------------------------------------------------------------------------------\n",seq,pckt_rcv_parsed);
 			
 			/*Ora devo mandare gli ack */
@@ -794,6 +775,21 @@ void recive_UDP_GO_BACK_N(){
 			}		
 	}
 	return;
+}
+
+char * parsed(int seq, char pckt_rcv[]){
+	/*La funzione restituisce la sottostringa del pacchetto -> PASSA MALE IL CONTENUTO
+			contentente il messaggio vero e proprio*/
+			char *c_index;
+			c_index = malloc(DIMENSIONE_PACCHETTO+8);		
+			sprintf(c_index, "%d", seq);
+			int st = strlen(c_index) + 1;
+			char *start = &pckt_rcv[st];
+			char *end = &pckt_rcv[DIMENSIONE_MESSAGGI];
+			char *substr = (char *)calloc(1, end - start + 1);
+			memcpy(substr, start, end - start);
+			free(c_index);
+			return substr;
 }
 
 
