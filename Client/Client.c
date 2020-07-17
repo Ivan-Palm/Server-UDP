@@ -98,7 +98,6 @@ int main() {
 	}
 	//Catturo la lunghezza della struct della socket
 	len = sizeof(servaddr);
-
 	
 	/*
 	Pulisco la memoria allocata per la struttura
@@ -110,10 +109,8 @@ int main() {
 	servaddr.sin_family=AF_INET;
 	servaddr.sin_addr.s_addr=inet_addr("127.0.0.1");
 	servaddr.sin_port=htons(PORT);
-	
 	//Mi presento al server
 	sendto(socketone, buffer, sizeof(buffer), 0, (SA *) &servaddr, len);
-	
 
 	//Pulisco buffer
 	bzero(buffer, DIMENSIONE_MESSAGGI);
@@ -480,9 +477,11 @@ void reception_data(){
 	printf("Aggiorno file_list...\n");
 	FILE *f;
 	f=fopen("lista_c.txt","a");
+	printf("FILE NAME %s\n",file_name);
 	fprintf(f, "\n%s", file_name); 
 	printf("File aggiornato correttamente.\n[OPERAZIONE COMPLETATA CON SUCCESSO]\n");
 	close(fd);
+	fclose(f);
 	num=0;
 	return;
 }
