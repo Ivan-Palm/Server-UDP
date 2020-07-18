@@ -49,6 +49,9 @@ void lista_dei_file(int , struct sockaddr_in , socklen_t );
 void reception_data();
 void recive_UDP_GO_BACK_N();
 int sendACK(int ,int );
+int upload();
+int downlaod();
+
 /*Questa funzione serve per creare numeri random da 0 a 100*/
 int num_random();
 int send_packet_GO_BACK_N(struct inside_the_package *, int , int );
@@ -73,12 +76,12 @@ int window_base = 0; 	// parametro di posizionamento attuale nella spedizione
 int socketone;	//File descriptor della socket
 int err;//Variabile per controllo di errore
 int dimensione; 	// dimensione del file da trasferire
-int num_pacchetti;	// numero di pacchetti da inviare
 char *file_da_ricevere;
 char **buff_file;
 int id=0;
 int c_error; //variabile per la gestione degli errori
 int exist=0; //per vedere se un file è gia esistente
+struct timeval  tv1, tv2; //per il calcolo del tempo di esecuzione
 
 
 int main() {
@@ -183,232 +186,21 @@ int main() {
 		
 		//CASO UPLOAD
 		else if ((strncmp("4", buffer, strlen("4"))) == 0) {
-			//Invio al server l'azione che voglio fare
-			id=0;
-			err = sendto(socketone, buffer, sizeof(buffer), 0, (SA *) &servaddr, len);
-			printf("Ho inviato %s\n",buffer);
-			if (err < 0){
-				perror("Errore nella sendto nella sezione del servizio di upload del client.");
-			}
-			printf("[FASE DI UPLOAD]\n");
-			/*Attendo che il Server mi dia il permesso per proseguire*/
-			bzero(buffer, DIMENSIONE_MESSAGGI);
-			
-			/*Attendo permesso dal server*/
-			err = recvfrom(socketone, buffer, sizeof(buffer), 0, (SA *) &servaddr, &len);
-			if (err < 0){
-				perror("Errore nella recvfrom nella sezione del servizio di upload del client.");
-			}
-			if(atoi(buffer) == CODICE){
-				perror("ATTENZIONE! Il server non è più in funzione.");
-				return 1;
-			}
-			
-			/*
-			Scelgo il file da inviare
-			Per farlo apro uno stream di sola lettura verso il file presente nella directory del client, 
-			dove all'interno ci sarà tutta la lista dei file caricabili sul server
-			*/
-			int file,dim;
-			int numero_ordine=0;
-			int seq = 0;
-			file=open("lista_c.txt",O_RDONLY,0666);
-			if(open==NULL){
-				printf("Errore apertura file\n");
-				return 0;
-			}
-			if(file<0){printf("Errore apertura lista dei file");}
-			/*
-			Calcolo la lunghezza complessiva del file facendo scorrere la testina dall'inzio alla fine
-			lseek ritornerà l'intera grandezza del file
-			*/
-			dimensione = lseek(file,0,SEEK_END);//Scorro la testina dall'inzio alla fine
-			lista_dei_files = malloc(dimensione);//Alloco tanta memoria per contenerlo
-			lseek(file,0,0);//riposiziono la testina all'inzio del file(meotodo di accesso diretto)
-			
-			/*Lettura dei della lista dei file caricabili sul server*/
-			read(file,lista_dei_files, dimensione);
-			printf("[LISTA DEI FILE NEL CLIENT]-------------------------------------\n%s\n-------------------------------------------------------------------\n",lista_dei_files);
-			
-			/*Scelta del file*/
-			bzero(buffer, DIMENSIONE_MESSAGGI);
-			SCELTA:
-			printf("Scegli il file inserendo il suo nome per intero(compreso di .txt): ");
-			fgets(buffer, DIMENSIONE_MESSAGGI,stdin);// catturo la stringa passata come parametro da standard input
-			close(file);//chiudo lo stream verso il file
-			bzero(file_name,128);//pulisco il buffer contenente il nome del file
-			strncpy(file_name,buffer,strlen(buffer)-1);//copio il nome del file in un puntatore a char
 			
 			
-			/*Apro il file da inviare per leggere i suoi dati*/
-			int file_inv = open(file_name,O_RDONLY,0666);
+			upload();
 			
+			//fine=0;
+			//inizio=0;
 			
-			/*Controllo se il file passato è presente nella lista dei file*/
-			if(file_inv<0){
-				printf("File non presente nella directory\n");
-				bzero(file_name,128);//pulisco il buffer contenente il nome del file
-				bzero(buffer, DIMENSIONE_MESSAGGI);
-				goto SCELTA;//se non è presente do la possibilità di sceglierlo di nuovo
-			}
-
-			bzero(buffer, DIMENSIONE_MESSAGGI);
-			printf("Sto inviando al server il nome %s\n",file_name);//controllo sul nome del file
-			
-			
-			/*Invio il nome del file al server*/
-			sendto(socketone, file_name, sizeof(file_name), 0, (SA *) &servaddr, len);
-			if (err < 0){
-				perror("Errore nella sendto della get_name_and_size_file del client.");
-			}
-			
-			printf("[INFORMAZIONI PRELIMINARI]------------------------------------------------\n");
-			/*Calcolo quanti pacchetti devo inviare al server*/
-			dim = lseek(file_inv, 0, SEEK_END);
-			num_pacchetti = (ceil((dim/DIMENSIONE_PACCHETTO)))+1;
-			printf("Numero di pacchetti da caricare: %d.\n", num_pacchetti);
-			printf("File di lunghezza %d\n",dim);
-			lseek(file_inv, 0, 0);
-			bzero(buffer, DIMENSIONE_MESSAGGI);
-			
-			
-			/*Inserisco la dimensione effettiva del file nel buffer e la mando al server */
-			sprintf(buffer, "%d", dim);
-			
-			/*Invio la dimensione del file*/
-			if (sendto(socketone, buffer, DIMENSIONE_MESSAGGI, 0, (struct sockaddr *) &servaddr, len) <0){
-				perror("Errore nella sento della send_len_file del client.");
-			}			
-			
-			
-			/*Inizio il caricamento del file*/
-			struct inside_the_package file_struct[num_pacchetti];//creo tanti pacchetti quanti calcolati prima con num_pacchetti
-			for(int i = 0; i < num_pacchetti; i++){
-				bzero(file_struct[i].buf, DIMENSIONE_MESSAGGI);
-			}
-			/*Creo un buffer avente la dimensione pari ad un pacchetto*/
-			char *temp_buf;
-			temp_buf = malloc(DIMENSIONE_PACCHETTO);//temp_buf ha la dimensione di un pacchetto
-			
-			
-			for (int i = 0; i < num_pacchetti; i++){//ciclo for ripetuto per tutti i pacchetti
-			
-				bzero(temp_buf, DIMENSIONE_PACCHETTO);//pulisco tempo_buf
-				read(file_inv, temp_buf, DIMENSIONE_PACCHETTO);//leggo quanto possibile da incapsulare in un pacchetto
-				
-				/*Creo un array di dimensione pari ad un pacchetto*/
-				char pacchetto[DIMENSIONE_MESSAGGI];
-				
-				/*Inserisco i dati di quel pacchetto*/
-				sprintf(pacchetto, "%d ", i);//Copio il numero di sequenza di quel pacchetto
-				strcat(pacchetto, temp_buf);//Copio nell'array creato per contenerlo, il numero di sequenza ed il contenuto precedentemente ricavato
-				sprintf(file_struct[i].buf, "%s", pacchetto);//Riscrivo quello appena creato nella struttura nella posizione i-esima
-				
-				file_struct[i].numero_ordine = i;//assegno l'indice i-esimo all'entry in quella struttura
-	
-			}
-			printf("[CONTENUTO FILE_STRUCT]------------------------------------------------\n");
-			/*Stampo l'inter struttura*/
-			for (int i = 0; i < num_pacchetti; i++){
-				printf("\nFILE_STRUCT[%d].BUF contiene :\n%s\n--------------------------------------------------------------\n",i,file_struct[i].buf);
-			}
-			
-			/*Da qui in poi ho tutti i pacchetti salvati nella struttura*/
-			printf("[PACCHETTI CARICATI NELLA STRUTTURA]\n\n");
-			printf("[FASE DI SCAMBIO]---------------------------------------------------\n");
-			/*Fase di invio dei pacchetti*/
-			
-			/*Vedo quanti pacchetti non sono multipli della windows dimensione*/
-			int offset = (num_pacchetti)%DIMENSIONE_FINESTRA;
-			/*Caso in cui il numero dei pacchetti da inviare in maniera diversa perche non sono un multipli della WINDOWS_SIZE*/
-			//if(offset > 0){//Numoero di pacchetti da inviare "multipli di WINDOWS_SIZE"*/
-			/*Se ci sono pacchetti "multipli di WINDOWS_SIZE" da inviare invio quelli*/
-				if(num_pacchetti-seq >= offset){
-			
-					while(seq<num_pacchetti - offset){//fino a quando non sono arrivato al primo pack "NON multiplo di WINDOWS_SIZE"
-						seq = send_packet_GO_BACK_N(file_struct, seq, DIMENSIONE_FINESTRA);//mando la struttura contenente i pacchetti, la sequenza, e la dimensione della finestra			
-						bzero(buffer, DIMENSIONE_MESSAGGI);
-					}
-					/*Una volta inviati i pacchetti "multipli di WINDOWS_SIZE" invio offset pacchetti "NON multipli di WINDOWS_SIZE"*/
-					if(seq<num_pacchetti){		/*Nel caso ne rimangano alcuni, li invio*/
-						seq = send_packet_GO_BACK_N(file_struct, seq, offset);//mando la struttura contenente i pacchetti, la sequenza, e il numero di pacchetti rimanenti
-						bzero(buffer, DIMENSIONE_MESSAGGI);
-					}
-				}
-				printf("[FINE FASE]----------------------------------------------------\n");
-				
-			bzero(buffer, DIMENSIONE_MESSAGGI);
-			FINISH:
-			/*Reset delle informaizoni*/
-			si=0;
-			seq=0;
-			num=0;
-			num_pacchetti=0;
-			id=0;
-			bzero(buffer, DIMENSIONE_MESSAGGI);
 		}
 		//CASO DOWNLOAD
 		else if((strncmp("3", buffer, strlen("3"))) == 0) {
-			//Invio al server cosa voglio fare
+			//clock_t inizio;
+			downlaod();
+			//clock_t fine;
+			//printf("Esecuzione downlad in %ld",(fine-inizio));
 			
-			err = sendto(socketone, buffer, sizeof(buffer), 0, (SA *) &servaddr, len);
-			if (err < 0){
-				perror("Errore nella sendto nella sezione del servizio di upload del client.");
-			}
-			/*attesa rispsta del server*/
-			if(atoi(buffer) == CODICE){
-				perror("ATTENZIONE! Il server non è più in funzione.");
-				return 1;
-			}
-			
-			printf("[DOWNLOAD]----------------------------------------------------------\n");
-			// ricevo la lista di file che posso scaricare
-			err = recvfrom(socketone, buffer, DIMENSIONE_MESSAGGI, 0, (SA *) &servaddr, &len);
-			char *listfile=buffer;
-			if (err < 0){
-				perror("Errore nella recvfrom nella sezione del servizio di download del client.");
-			}
-			printf("Download accettato dal server.\n");
-			
-			
-			// Riucevo la lista dei file dal server
-			printf("[LISTA DEI FILE NEL SERVER]---------------------------------------------------\n%s\n--------------------------------------------------------------------------------\n", buffer);
-			bzero(buffer, DIMENSIONE_MESSAGGI);
-			REQUEST:
-			printf("Inserisci il nome del file da scaricare: ");
-			
-			
-			// riempio il buffer con la stringa inserita in stdin
-			fgets(buffer, DIMENSIONE_MESSAGGI, stdin);
-			int leng = strlen(buffer);
-			if(buffer[leng-1] == '\n'){
-				buffer[leng-1] = '\0';
-			}
-			strcpy(file_name,buffer);
-
-
-			// invio la richiesta con il nome del file da scaricare preso 
-			// dalla lista ricevuta dal server
-			err = sendto(socketone, buffer, sizeof(buffer), 0, (SA *) &servaddr, len);
-			if (err < 0){
-				perror("Errore nella sendto 2 nella sezione del servizio di download del client.");
-			}
-			
-			//ricevo un messaggio dal server per capire se il nome inviato è giusto
-			bzero(buffer,DIMENSIONE_MESSAGGI);
-			err = recvfrom(socketone, buffer, DIMENSIONE_MESSAGGI, 0, (SA *) &servaddr, &len);
-			if (err < 0){
-				perror("Errore nella recvfrom nella sezione del servizio di download del client.");
-			}
-			if(strcmp(buffer,"not_exist")==0){
-				printf("Il file non esiste sul server\n");
-				bzero(buffer, DIMENSIONE_MESSAGGI);
-				goto REQUEST;
-			}
-			// pulisco il buffer
-			bzero(buffer, DIMENSIONE_MESSAGGI);
-			reception_data();
-			bzero(buffer, DIMENSIONE_MESSAGGI);
 		}
 		//CASO INPUT ERRATO
 		else{
@@ -676,6 +468,7 @@ void recive_UDP_GO_BACK_N(){
 	int offset = num_pacchetti%DIMENSIONE_FINESTRA; //indica quante ondate di pacchetti devo ricevere 
 	int w_size=DIMENSIONE_FINESTRA;//w_size prende la dimensione dell DIMENSIONE_FINESTRA per poi riadattarla in caso di pack "diversi"
 	/*Vado nel ciclo finche non termino i pacchetti*/
+	gettimeofday(&tv1, NULL);
 	while(num < num_pacchetti){
 		/*Inizio a ricevere pacchetti*/
 		/*
@@ -771,6 +564,8 @@ void recive_UDP_GO_BACK_N(){
 			printf(" ");	
 			}		
 	}
+	gettimeofday(&tv2, NULL);
+	printf("Downlaod total time = %f seconds\n",(double) (tv2.tv_usec - tv1.tv_usec) / 1000000 +(double) (tv2.tv_sec - tv1.tv_sec));
 	return;
 }
 
@@ -823,3 +618,230 @@ int num_random(){
 	return rand()%100;
 }
 
+
+int upload(){
+	//Invio al server l'azione che voglio fare
+			id=0;
+			err = sendto(socketone, buffer, sizeof(buffer), 0, (SA *) &servaddr, len);
+			printf("Ho inviato %s\n",buffer);
+			if (err < 0){
+				perror("Errore nella sendto nella sezione del servizio di upload del client.");
+			}
+			printf("[FASE DI UPLOAD]\n");
+			/*Attendo che il Server mi dia il permesso per proseguire*/
+			bzero(buffer, DIMENSIONE_MESSAGGI);
+			
+			/*Attendo permesso dal server*/
+			err = recvfrom(socketone, buffer, sizeof(buffer), 0, (SA *) &servaddr, &len);
+			if (err < 0){
+				perror("Errore nella recvfrom nella sezione del servizio di upload del client.");
+			}
+			if(atoi(buffer) == CODICE){
+				perror("ATTENZIONE! Il server non è più in funzione.");
+				return 1;
+			}
+			
+			/*
+			Scelgo il file da inviare
+			Per farlo apro uno stream di sola lettura verso il file presente nella directory del client, 
+			dove all'interno ci sarà tutta la lista dei file caricabili sul server
+			*/
+			int file,dim;
+			int numero_ordine=0;
+			int seq = 0;
+			file=open("lista_c.txt",O_RDONLY,0666);
+			if(open==NULL){
+				printf("Errore apertura file\n");
+				return 0;
+			}
+			if(file<0){printf("Errore apertura lista dei file");}
+			/*
+			Calcolo la lunghezza complessiva del file facendo scorrere la testina dall'inzio alla fine
+			lseek ritornerà l'intera grandezza del file
+			*/
+			dimensione = lseek(file,0,SEEK_END);//Scorro la testina dall'inzio alla fine
+			lista_dei_files = malloc(dimensione);//Alloco tanta memoria per contenerlo
+			lseek(file,0,0);//riposiziono la testina all'inzio del file(meotodo di accesso diretto)
+			
+			/*Lettura dei della lista dei file caricabili sul server*/
+			read(file,lista_dei_files, dimensione);
+			printf("[LISTA DEI FILE NEL CLIENT]-------------------------------------\n%s\n-------------------------------------------------------------------\n",lista_dei_files);
+			
+			/*Scelta del file*/
+			bzero(buffer, DIMENSIONE_MESSAGGI);
+			SCELTA:
+			printf("Scegli il file inserendo il suo nome per intero(compreso di .txt): ");
+			fgets(buffer, DIMENSIONE_MESSAGGI,stdin);// catturo la stringa passata come parametro da standard input
+			close(file);//chiudo lo stream verso il file
+			bzero(file_name,128);//pulisco il buffer contenente il nome del file
+			strncpy(file_name,buffer,strlen(buffer)-1);//copio il nome del file in un puntatore a char
+			
+			
+			/*Apro il file da inviare per leggere i suoi dati*/
+			int file_inv = open(file_name,O_RDONLY,0666);
+			
+			
+			/*Controllo se il file passato è presente nella lista dei file*/
+			if(file_inv<0){
+				printf("File non presente nella directory\n");
+				bzero(file_name,128);//pulisco il buffer contenente il nome del file
+				bzero(buffer, DIMENSIONE_MESSAGGI);
+				goto SCELTA;//se non è presente do la possibilità di sceglierlo di nuovo
+			}
+
+			bzero(buffer, DIMENSIONE_MESSAGGI);
+			printf("Sto inviando al server il nome %s\n",file_name);//controllo sul nome del file
+			
+			
+			/*Invio il nome del file al server*/
+			sendto(socketone, file_name, sizeof(file_name), 0, (SA *) &servaddr, len);
+			if (err < 0){
+				perror("Errore nella sendto della get_name_and_size_file del client.");
+			}
+			
+			printf("[INFORMAZIONI PRELIMINARI]------------------------------------------------\n");
+			/*Calcolo quanti pacchetti devo inviare al server*/
+			dim = lseek(file_inv, 0, SEEK_END);
+			num_pacchetti = (ceil((dim/DIMENSIONE_PACCHETTO)))+1;
+			printf("Numero di pacchetti da caricare: %d.\n", num_pacchetti);
+			printf("File di lunghezza %d\n",dim);
+			lseek(file_inv, 0, 0);
+			bzero(buffer, DIMENSIONE_MESSAGGI);
+			
+			
+			/*Inserisco la dimensione effettiva del file nel buffer e la mando al server */
+			sprintf(buffer, "%d", dim);
+			
+			/*Invio la dimensione del file*/
+			if (sendto(socketone, buffer, DIMENSIONE_MESSAGGI, 0, (struct sockaddr *) &servaddr, len) <0){
+				perror("Errore nella sento della send_len_file del client.");
+			}			
+			
+			
+			/*Inizio il caricamento del file*/
+			struct inside_the_package file_struct[num_pacchetti];//creo tanti pacchetti quanti calcolati prima con num_pacchetti
+			for(int i = 0; i < num_pacchetti; i++){
+				bzero(file_struct[i].buf, DIMENSIONE_MESSAGGI);
+			}
+			/*Creo un buffer avente la dimensione pari ad un pacchetto*/
+			char *temp_buf;
+			temp_buf = malloc(DIMENSIONE_PACCHETTO);//temp_buf ha la dimensione di un pacchetto
+			
+			
+			for (int i = 0; i < num_pacchetti; i++){//ciclo for ripetuto per tutti i pacchetti
+			
+				bzero(temp_buf, DIMENSIONE_PACCHETTO);//pulisco tempo_buf
+				read(file_inv, temp_buf, DIMENSIONE_PACCHETTO);//leggo quanto possibile da incapsulare in un pacchetto
+				
+				/*Creo un array di dimensione pari ad un pacchetto*/
+				char pacchetto[DIMENSIONE_MESSAGGI];
+				
+				/*Inserisco i dati di quel pacchetto*/
+				sprintf(pacchetto, "%d ", i);//Copio il numero di sequenza di quel pacchetto
+				strcat(pacchetto, temp_buf);//Copio nell'array creato per contenerlo, il numero di sequenza ed il contenuto precedentemente ricavato
+				sprintf(file_struct[i].buf, "%s", pacchetto);//Riscrivo quello appena creato nella struttura nella posizione i-esima
+				
+				file_struct[i].numero_ordine = i;//assegno l'indice i-esimo all'entry in quella struttura
+	
+			}
+			printf("[CONTENUTO FILE_STRUCT]------------------------------------------------\n");
+			/*Stampo l'inter struttura*/
+			for (int i = 0; i < num_pacchetti; i++){
+				printf("\nFILE_STRUCT[%d].BUF contiene :\n%s\n--------------------------------------------------------------\n",i,file_struct[i].buf);
+			}
+			
+			/*Da qui in poi ho tutti i pacchetti salvati nella struttura*/
+			printf("[PACCHETTI CARICATI NELLA STRUTTURA]\n\n");
+			printf("[FASE DI SCAMBIO]---------------------------------------------------\n");
+			/*Fase di invio dei pacchetti*/
+			
+			/*Vedo quanti pacchetti non sono multipli della windows dimensione*/
+			int offset = (num_pacchetti)%DIMENSIONE_FINESTRA;
+			/*Caso in cui il numero dei pacchetti da inviare in maniera diversa perche non sono un multipli della WINDOWS_SIZE*/
+			//if(offset > 0){//Numoero di pacchetti da inviare "multipli di WINDOWS_SIZE"*/
+			gettimeofday(&tv1, NULL);
+			while(seq<num_pacchetti - offset){//fino a quando non sono arrivato al primo pack "NON multiplo di WINDOWS_SIZE"
+				seq = send_packet_GO_BACK_N(file_struct, seq, DIMENSIONE_FINESTRA);//mando la struttura contenente i pacchetti, la sequenza, e la dimensione della finestra			
+				bzero(buffer, DIMENSIONE_MESSAGGI);
+			}
+			/*Una volta inviati i pacchetti "multipli di WINDOWS_SIZE" invio offset pacchetti "NON multipli di WINDOWS_SIZE"*/
+			if(seq<num_pacchetti){		/*Nel caso ne rimangano alcuni, li invio*/
+				seq = send_packet_GO_BACK_N(file_struct, seq, offset);//mando la struttura contenente i pacchetti, la sequenza, e il numero di pacchetti rimanenti
+				bzero(buffer, DIMENSIONE_MESSAGGI);
+			}
+			gettimeofday(&tv2, NULL);
+			printf ("Upload total time = %f seconds\n",(double) (tv2.tv_usec - tv1.tv_usec) / 1000000 +(double) (tv2.tv_sec - tv1.tv_sec));
+			printf("[FINE FASE]----------------------------------------------------\n");	
+			bzero(buffer, DIMENSIONE_MESSAGGI);
+			FINISH:
+			/*Reset delle informaizoni*/
+			si=0;
+			seq=0;
+			num=0;
+			num_pacchetti=0;
+			id=0;
+			bzero(buffer, DIMENSIONE_MESSAGGI);
+}
+
+int downlaod(){
+	//Invio//Invio al server cosa voglio fare
+			
+			err = sendto(socketone, buffer, sizeof(buffer), 0, (SA *) &servaddr, len);
+			if (err < 0){
+				perror("Errore nella sendto nella sezione del servizio di upload del client.");
+			}
+			/*attesa rispsta del server*/
+			if(atoi(buffer) == CODICE){
+				perror("ATTENZIONE! Il server non è più in funzione.");
+				return 1;
+			}
+			
+			printf("[DOWNLOAD]----------------------------------------------------------\n");
+			// ricevo la lista di file che posso scaricare
+			err = recvfrom(socketone, buffer, DIMENSIONE_MESSAGGI, 0, (SA *) &servaddr, &len);
+			char *listfile=buffer;
+			if (err < 0){
+				perror("Errore nella recvfrom nella sezione del servizio di download del client.");
+			}
+			printf("Download accettato dal server.\n");
+			
+			
+			// Riucevo la lista dei file dal server
+			printf("[LISTA DEI FILE NEL SERVER]---------------------------------------------------\n%s\n--------------------------------------------------------------------------------\n", buffer);
+			bzero(buffer, DIMENSIONE_MESSAGGI);
+			REQUEST:
+			printf("Inserisci il nome del file da scaricare: ");
+			
+			
+			// riempio il buffer con la stringa inserita in stdin
+			fgets(buffer, DIMENSIONE_MESSAGGI, stdin);
+			int leng = strlen(buffer);
+			if(buffer[leng-1] == '\n'){
+				buffer[leng-1] = '\0';
+			}
+			strcpy(file_name,buffer);
+
+
+			// invio la richiesta con il nome del file da scaricare preso 
+			// dalla lista ricevuta dal server
+			err = sendto(socketone, buffer, sizeof(buffer), 0, (SA *) &servaddr, len);
+			if (err < 0){
+				perror("Errore nella sendto 2 nella sezione del servizio di download del client.");
+			}
+			
+			//ricevo un messaggio dal server per capire se il nome inviato è giusto
+			bzero(buffer,DIMENSIONE_MESSAGGI);
+			err = recvfrom(socketone, buffer, DIMENSIONE_MESSAGGI, 0, (SA *) &servaddr, &len);
+			if (err < 0){
+				perror("Errore nella recvfrom nella sezione del servizio di download del client.");
+			}
+			if(strcmp(buffer,"not_exist")==0){
+				printf("Il file non esiste sul server\n");
+				bzero(buffer, DIMENSIONE_MESSAGGI);
+				goto REQUEST;
+			}
+			// pulisco il buffer
+			bzero(buffer, DIMENSIONE_MESSAGGI);
+			reception_data();
+			bzero(buffer, DIMENSIONE_MESSAGGI);
+}

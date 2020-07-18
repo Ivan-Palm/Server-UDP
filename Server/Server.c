@@ -257,7 +257,7 @@ int main(){
 						printf("[FASE EXIT]\n");
 						f_esci(port_client,socketone,parent_pid);
 						while(1){
-							sleep(1000);
+							sleep(500);
 						}
 						bzero(buffer, MAX_DIM_MESSAGE);
 					}
