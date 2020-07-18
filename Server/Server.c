@@ -864,7 +864,7 @@ int send_packet_GO_BACK_N(struct pacchetto *file_struct, int seq, int offset){//
 		}
 		printf("Pacchetto [%d] inviato\n",seq+i);
 		if(timer==1){
-			/*Qui dovrebbe partire il timer associato al pack seq*/
+			/*Qui parte il timer associato al pack seq*/
 			setTimeout(SEND_FILE_TIMEOUT,seq+i);//timeout del primo pack
 		}
 		timer=0;
@@ -895,11 +895,6 @@ int send_packet_GO_BACK_N(struct pacchetto *file_struct, int seq, int offset){//
 				seq=seq-i;
 				bzero(buffer, MAX_DIM_MESSAGE);
 				}
-		
-			else{
-				printf("Timer scaduto...\n");
-				
-			}
 		}
 		/*Caso prendo il pacchetto*/
 		else{

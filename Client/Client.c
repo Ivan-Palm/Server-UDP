@@ -29,7 +29,6 @@
 #define DIMENSIONE_PACCHETTO 1024 // dimensione del payload nel pacchetto UDP affidabile
 #define DIMENSIONE_FINESTRA 3 // dimensione della finestra di spedizione
 #define SEND_FILE_TIMEOUT 100000 // timeout di invio
-#define CONNECTION_TIMER 1000000 //timeout di connessione
 #define L_PROB 15 // probabilità di perdita
 
 
@@ -81,7 +80,7 @@ char **buff_file;
 int id=0;
 int c_error; //variabile per la gestione degli errori
 int exist=0; //per vedere se un file è gia esistente
-struct timeval  tv1, tv2; //per il calcolo del tempo di esecuzione
+struct timeval  tv1, tv2, tv3, tv4; //per il calcolo del tempo di esecuzione
 
 
 int main() {
@@ -499,15 +498,7 @@ void recive_UDP_GO_BACK_N(){
 			/*attesa di un pacchetto*/
 			c_error = recvfrom(socketone, pckt_rcv, DIMENSIONE_MESSAGGI, 0, (SA *) &servaddr, &len);
 			if (c_error < 0){
-				if(errno == EAGAIN)
-				{
-					printf("buffo di ricezione scaduto nella recive_UDP_rel_file del client\n");
-					goto FINE;
-				}
-				else
-				{
 					herror("c_errorore nella recvfrom della recive_UDP_rel_file nel client");
-				}
 			}
 			
 			// buff riceve il numero di sequenza messo nel header del pacchetto
