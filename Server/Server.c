@@ -854,10 +854,17 @@ int GO_BACK_N_Send(struct pacchetto *file_struct, int num_sequence, int not_mult
 			fprintf(stderr, "Errore nell'invio del pacchetto numero: %d.\n", num_sequence);
 			exit(-1);
 		}
+<<<<<<< HEAD
 		printf("Pacchetto [%d] inviato\n",num_sequence+i);
 		if(Timer==1){
 			/*Qui parte il Timer associato al pack num_sequence*/
 			setTimeout(Timer,num_sequence+i);//timeout del primo pack
+=======
+		printf("Pacchetto [%d] inviato\n",seq+i);
+		if(timer==1){
+			/*Qui dovrebbe partire il timer associato al pack seq*/
+			setTimeout(SEND_FILE_TIMEOUT,seq+i);//timeout del primo pack
+>>>>>>> parent of 27f9b1d... Update #1 #2 #4
 		}
 		Timer=0;
 		bzero(send_buff, MAX_DIM_MESSAGE);
@@ -887,6 +894,11 @@ int GO_BACK_N_Send(struct pacchetto *file_struct, int num_sequence, int not_mult
 				num_sequence=num_sequence-i;
 				bzero(send_buff, MAX_DIM_MESSAGE);
 				}
+		
+			else{
+				printf("Timer scaduto...\n");
+				
+			}
 		}
 		/*Caso prendo il pacchetto*/
 		else{
