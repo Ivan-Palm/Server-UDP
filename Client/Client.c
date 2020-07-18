@@ -468,7 +468,7 @@ void recive_UDP_GO_BACK_N(){
 	int offset = num_pacchetti%DIMENSIONE_FINESTRA; //indica quante ondate di pacchetti devo ricevere 
 	int w_size=DIMENSIONE_FINESTRA;//w_size prende la dimensione dell DIMENSIONE_FINESTRA per poi riadattarla in caso di pack "diversi"
 	/*Vado nel ciclo finche non termino i pacchetti*/
-	gettimeofday(&tv1, NULL);
+	gettimeofday(&tv3, NULL);
 	while(num < num_pacchetti){
 		/*Inizio a ricevere pacchetti*/
 		/*
@@ -564,8 +564,8 @@ void recive_UDP_GO_BACK_N(){
 			printf(" ");	
 			}		
 	}
-	gettimeofday(&tv2, NULL);
-	printf("Downlaod total time = %f seconds\n",(double) (tv2.tv_usec - tv1.tv_usec) / 1000000 +(double) (tv2.tv_sec - tv1.tv_sec));
+	gettimeofday(&tv4, NULL);
+	printf("Downlaod total time = %f seconds\n",(double) (tv4.tv_usec - tv3.tv_usec) / 1000000 +(double) (tv4.tv_sec - tv3.tv_sec));
 	return;
 }
 
