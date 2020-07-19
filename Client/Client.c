@@ -1,8 +1,6 @@
-#include<netdb.h>
 #include<string.h>
 #include<stdlib.h>
 #include<stdio.h>
-#include<netinet/in.h>
 #include<sys/types.h>
 #include<netdb.h>
 #include<unistd.h>
@@ -14,7 +12,6 @@
 #include<sys/mman.h>
 #include<sys/time.h>
 #include <errno.h>
-#include <pthread.h>
 #include <signal.h>
 
 
@@ -27,7 +24,7 @@
 #define CODICE 25463 //Codice di utility per gestire la chiusura del server
 #define DIMENSIONE_PACCHETTO 1024 // dimensione del payload nel pacchetto UDP affidabile
 #define DIMENSIONE_FINESTRA 3 // dimensione della finestra di spedizione
-#define SEND_FILE_TIMEOUT 100000 // timeout di invio
+#define TIMEOUT 100000 // timeout di invio
 #define L_PROB 15 // probabilità di perdita
 #define USCITA 1998
 
@@ -158,7 +155,8 @@ int main() {
 		printf("\nComando:");
 		fgets(buffer, DIMENSIONE_MESSAGGI, stdin);
 		//Verifico se il client vuole uscire o meno dal ciclo
-		if((strncmp("1", buffer, strlen("1"))) == 0){//Caso di uscita
+		
+		if(((strncmp("1", buffer, strlen("1"))) == 0)&& (strlen(buffer)<5)){//Caso di uscita
 		
 			printf("Il client sta chiudendo la connessione...\n");
 			//invio il messaggio al server per notificargli la chiusura del client
@@ -341,7 +339,7 @@ int UDP_GO_BACK_N_Send(struct inside_the_package *file_struct, int seq, int not_
 		printf("Pacchetto [%d] inviato\n",seq+i);
 		if(timer==1){
 			/*Qui dovrebbe partire il timer associato al pack seq*/
-			setTimeout(SEND_FILE_TIMEOUT,seq+i);//timeout del primo pack
+			setTimeout(TIMEOUT,seq+i);//timeout del primo pack
 		}
 		timer=0;
 		bzero(buffer, DIMENSIONE_MESSAGGI);
@@ -391,7 +389,7 @@ int UDP_GO_BACK_N_Send(struct inside_the_package *file_struct, int seq, int not_
 			}
 			else{//caso ack uguale a quello aspettato
 				printf("Ho ricevuto l'ack del pacchetto [%d]\n\n",check);
-				setTimeout(SEND_FILE_TIMEOUT,seq+si);//timeout per i pack successivi al primo
+				setTimeout(TIMEOUT,seq+si);//timeout per i pack successivi al primo
 				
 				/*
 				Questo controllo su seq serve per far scorrere l'id del pacchetto ricercato in mainera ottimale

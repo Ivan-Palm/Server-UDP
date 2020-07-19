@@ -27,7 +27,8 @@
 #define DIM_PACK 1024 // dimensione del payload nel pacchetto UDP affidabile
 #define L_PROB 15 // probabilità di perdita
 #define DIMENSIONE_FINESTRA 3
-#define SEND_FILE_TIMEOUT 100000 // timeout di invio
+#define TIMEOUT 100000 // timeout di invio
+
 
 
 /*strutture*/
@@ -81,7 +82,6 @@ int size; //Dimensione del file da trasferire
 struct sockaddr_in servaddr;//Struct di supporto della socket
 socklen_t len;//Lunghezza della struct della socket
 int port_number = 0; //Variabile di utility per il calcolo delle porte successive da dare al client
-int shmid; 	//Identificativo della memoria condivisa
 int port_client; //Porta che diamo al client per le successive trasmissioni multiprocesso
 int socketone;	//File descriptor di socket
 int c_error; 	// intero per il controllo della gestione d'c_errorore
@@ -90,7 +90,8 @@ int num_pacchetti;
 int id=0;
 int exist=0; //per vedere se un file è gia esistente
 
-
+/*Questa funzione viene chiamata ogni volta che un client viene disconnesso
+serve a diminuire il contatore che indica i client connessi attualmente al server*/
 int decrement_client(int *utenti_connessi){
 	*utenti_connessi=*utenti_connessi-1;
 	return *utenti_connessi;
@@ -124,12 +125,15 @@ void show_port(){
 	}
 }
 
+/*Questa funzione viene chiamata ogni volta che un client viene connesso
+serve ad aumentare il contatore che indica i client connessi attualmente al server*/
 int increse_client(int *utenti_connessi){
 	*utenti_connessi = *utenti_connessi + 1;
 	return *utenti_connessi;
 }
 
-
+/*Questa funzione viene utilizzata per creare un array di valori condiviso tra i processi child ed il parent indicante quanti utenti sono connessi
+e su quali porte*/
 void define_num_client(){
 	utenti_connessi=malloc((CONNESSIONI*sizeof(int)));
 		if(utenti_connessi==NULL){
@@ -153,6 +157,7 @@ int main(){
 	
 	while(1){
 		bzero(buffer, MAX_DIM_MESSAGE);
+		
 		//attendo un client
 		if(recvfrom(s_socketone, buffer, MAX_DIM_MESSAGE, 0, (struct sockaddr *) &servaddr, &len) < 0){
 			herror("c_errorore nella recvfrom nel primo while del server.");
@@ -227,7 +232,9 @@ int main(){
 				/*creo i segnali per la gestione del child*/
 				/*Entro nel ciclo di ascolto infinito*/
 				while(1){
+					bzero(buffer, MAX_DIM_MESSAGE);
 					REQUEST:
+					fflush(stdout);
 					bzero(buffer, MAX_DIM_MESSAGE);//Pulisco il buffer
 					/*Vado in attesa di un messaggio*/
 					memset(buffer,0,MAX_DIM_MESSAGE);
@@ -242,8 +249,7 @@ int main(){
 					}
 					/*Gestisco la richiesta del client*/
 					/*Caso exit*/
-					printf("MI HA RICHIESTO %s\n",buffer);
-					if((strncmp("1", buffer, strlen("1")))==0||(strncmp("1998", buffer, strlen("1998")) == 0)){
+					if(((strncmp("1", buffer, strlen("1")))==0||(strncmp("1998", buffer, strlen("1998")) == 0))&& (strlen(buffer)<5)){
 						printf("Client port %d -> Richiesto exit\n",port_client);
 						printf("[FASE EXIT]\n");
 						f_esci(port_client,socketone,parent_pid);
@@ -404,7 +410,7 @@ void f_download(int socketone, struct sockaddr_in servaddr, socklen_t len){
 	}
 	
 	printf("[CONTENUTO FILE_STRUCT]------------------------------------------------\n");
-	/*Stampo l'inter struttura*//*-> righa 299 client*/
+	/*Stampo l'intera struttura*/
 	for (int i = 0; i < num_pacchetti; i++){
 		printf("\nFILE_STRUCT[%d].BUF contiene :\n%s\n--------------------------------------------------------------\n",i,file_struct[i].buf);
 	}
@@ -441,7 +447,7 @@ void f_download(int socketone, struct sockaddr_in servaddr, socklen_t len){
 Il server in questo caso dovrebbe scartare i pacchetti 
 fuori sequenza e mandare ack complessivi, oppure in caso di pacchetto fuori ordine l'ultimo ack riccevuto
 */
-void recive_UDP_GO_BACK_N(){
+void UDP_GO_BACK_N_Receive(){
 	receive=0;
 	num=0;
 	/*
@@ -449,8 +455,7 @@ void recive_UDP_GO_BACK_N(){
 	quante ondate di pacchetti "normali" e "diversi" arriveranno dal client
 	*/
 	int seq,timer; //dorvò scegliere opportunamente il timer di scadenza
-	int count = 0;
-	int counter = 0;
+	int contatore = 0;
 	struct pacchetto pacchett[num_pack];//Creo la struttura per contenere i pacchetti
 	int offset = num_pack%WINDOW_SIZE; //indica quante ondate di pacchetti devo ricevere 
 	int w_size=WINDOW_SIZE;//w_size prende la dimensione dell WINDOW_SIZE per poi riadattarla in caso di pack "diversi"
@@ -461,7 +466,7 @@ void recive_UDP_GO_BACK_N(){
 		Entriamo in questo ciclo solo nel caso in cui rimangono al piu offset pacchetti, 
 		di conseguenza la dimensione della nostra finestra diventa offset
 		 */
-		if(num_pack-count <= offset + 1 && offset!=0){
+		if(num_pack-contatore <= offset + 1 && offset!=0){
 			if(WINDOW_SIZE%2){
 				w_size = offset;
 			}
@@ -520,8 +525,8 @@ void recive_UDP_GO_BACK_N(){
 				}
 			
 			}
-			if(seq >= count){
-				count = seq + 1;
+			if(seq >= contatore){
+				contatore = seq + 1;
 			}
 			printf("--------------------------------------[HO RICEVUTO IL PACCHETTO %d]------------------------------------\n",seq);
 			pckt_rcvt_parsed=parsed(seq,pckt_rcvt);
@@ -530,7 +535,7 @@ void recive_UDP_GO_BACK_N(){
 			printf("------------------------------[CONTENUTO PACK %d-ESIMO]------------------------------------\n%s\n------------------------------------------------------------------------------------\n",seq,pckt_rcvt_parsed);
 			/*Ora devo mandare gli ack */
 			if(sendACK(seq,WINDOW_SIZE)){
-			counter = counter + 1;
+		
 			receive++;
 				// copia del contenuto del pacchetto nella struttura ausiliaria
 				if(strcpy(pacchett[seq].buf, pckt_rcvt_parsed) == NULL){
@@ -558,7 +563,7 @@ void recive_UDP_GO_BACK_N(){
 	return;
 }
 
-
+/*Questa funzione permette di estrapolare il contenuto del pacchetto prendendo solo le informazioni che ci servono -> (testo)*/
 char * parsed(int seq, char pckt_rcvt[]){
 		char *c_index;
 		c_index = malloc(DIM_PACK+8);
@@ -695,7 +700,7 @@ void reception_data(){
 		herror("c_errorore nella open in create_local_file del server.");
 	}
 	printf("Inizio a ricevere i pacchetti con GO-BACK-N\n");
-	recive_UDP_GO_BACK_N();	
+	UDP_GO_BACK_N_Receive();	
 	printf("Ricezione terminata correttamente.\n");
 	
 	
@@ -743,7 +748,6 @@ int creazione_socket(int s_port){
 	// setto i parametri della struttura della socket
 	servaddr.sin_family=AF_INET;
 	servaddr.sin_addr.s_addr=htonl(INADDR_ANY);
-	//servaddr.sin_addr.s_addr=inet_addr("127.0.0.1");
 	servaddr.sin_port=htons(s_port);
 
 	// binding della socket con controllo d'c_errorore
@@ -799,9 +803,9 @@ void f_lista(int socketone, struct sockaddr_in servaddr, socklen_t len){
 
 
 /*
-Questa funzione viene utilizzata quando il child decide di uscire
-Il server prende come dati il pid e la port_client inerente al client connesso
-Medianti questi dati lancia un segnale di kill verso quel process ID e chiude la socket
+Questa funzione viene utilizzata quando il client decide di uscire
+Il server aggiorna l'array di char condiviso tra i processi e decrementa il numero di client attivifacendo tornare la porta occupata precedentemente
+dal client di nuovo libera
 */
 void f_esci(int port_client, int socket_fd, pid_t pid){
 	printf("Chiudo la connessione verso la porta: %d.\n", port_client);
@@ -892,7 +896,7 @@ int send_packet_GO_BACK_N(struct pacchetto *file_struct, int seq, int offset){//
 		printf("Pacchetto [%d] inviato\n",seq+i);
 		if(timer==1){
 			/*Qui parte il timer associato al pack seq*/
-			setTimeout(SEND_FILE_TIMEOUT,seq+i);//timeout del primo pack
+			setTimeout(TIMEOUT,seq+i);//timeout del primo pack
 		}
 		timer=0;
 		bzero(buffer, MAX_DIM_MESSAGE);
@@ -945,7 +949,7 @@ int send_packet_GO_BACK_N(struct pacchetto *file_struct, int seq, int offset){//
 			}
 			else{//caso ack uguale a quello aspettato
 				printf("Ho ricevuto l'ack del pacchetto [%d]\n\n",check);
-				setTimeout(SEND_FILE_TIMEOUT,seq+si);//timeout per i pack successivi al primo
+				setTimeout(TIMEOUT,seq+si);//timeout per i pack successivi al primo
 				
 				/*
 				Questo controllo su seq serve per far scorrere l'id del pacchetto ricercato in mainera ottimale
