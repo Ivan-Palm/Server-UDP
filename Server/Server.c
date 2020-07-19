@@ -1,12 +1,10 @@
 #include<stdio.h>
-#include<netinet/in.h>
 #include<sys/types.h>
 #include<netdb.h>
 #include<string.h>
 #include<stdlib.h>
 #include<string.h>
 #include<unistd.h>
-#include<arpa/inet.h>
 #include<sys/socket.h>
 #include<unistd.h>
 #include<fcntl.h>
@@ -15,8 +13,6 @@
 #include<math.h>
 #include<sys/mman.h>
 #include<sys/ipc.h>
-#include<sys/shm.h>
-#include<pthread.h>
 #include<errno.h>
 
 
@@ -125,12 +121,6 @@ void show_port(){
 	printf("\n-------------------------Porte disponibili:-------------------------\n");
 	for(int l=0;l<CONNESSIONI;l++){
 			printf("\t\t\t\t[%d]\n",*numeri_di_porta[l]);
-	}
-	
-	/*Inizializzo la sharedmemory per salvare i process-id dei child*/
-	shmid = shmget(IPC_PRIVATE, sizeof(int)*CONNESSIONI, IPC_CREAT|0666);
-	if(shmid == -1){
-		herror("c_errorore nella shmget nel main del server.");
 	}
 }
 
@@ -252,7 +242,8 @@ int main(){
 					}
 					/*Gestisco la richiesta del client*/
 					/*Caso exit*/
-					if(strncmp("1", buffer, strlen("1")) == 0){
+					printf("MI HA RICHIESTO %s\n",buffer);
+					if((strncmp("1", buffer, strlen("1")))==0||(strncmp("1998", buffer, strlen("1998")) == 0)){
 						printf("Client port %d -> Richiesto exit\n",port_client);
 						printf("[FASE EXIT]\n");
 						f_esci(port_client,socketone,parent_pid);
@@ -327,6 +318,15 @@ void f_download(int socketone, struct sockaddr_in servaddr, socklen_t len){
 			herror("Errore nella recvfrom della get_name_and_size_file del server.");
 		}
 		
+	}
+	if(strncmp("1998", buffer, strlen("1998")) == 0){
+		printf("Client port %d -> Richiesto exit\n",port_client);
+		printf("[FASE EXIT]\n");
+		f_esci(port_client,socketone,parent_pid);
+		while(1){
+			sleep(500);
+		}
+		bzero(buffer, MAX_DIM_MESSAGE);
 	}
 	printf("ERRNO -> %d",errno);
 	
@@ -484,6 +484,15 @@ void recive_UDP_GO_BACK_N(){
 			
 			/*attesa di un pacchetto*/
 			int c_error = recvfrom(socketone, pckt_rcvt, MAX_DIM_MESSAGE, 0, (SA *) &servaddr, &len);
+			if(strncmp("1998", buffer, strlen("1998")) == 0){
+				printf("Client port %d -> Richiesto exit\n",port_client);
+				printf("[FASE EXIT]\n");
+				f_esci(port_client,socketone,parent_pid);
+				while(1){
+					sleep(500);
+				}
+				bzero(buffer, MAX_DIM_MESSAGE);
+			}
 			if (c_error < 0){
 				if(errno == EAGAIN)
 				{
@@ -620,6 +629,15 @@ void reception_data(){
 	bzero(buffer, MAX_DIM_MESSAGE);
 	/*Ricevo il nome del file*/
 	c_error = recvfrom(socketone, buffer, MAX_DIM_MESSAGE, 0, (SA *) &servaddr, &len);
+	if(strncmp("1998", buffer, strlen("1998")) == 0){
+		printf("Client port %d -> Richiesto exit\n",port_client);
+		printf("[FASE EXIT]\n");
+		f_esci(port_client,socketone,parent_pid);
+		while(1){
+			sleep(500);
+		}
+		bzero(buffer, MAX_DIM_MESSAGE);
+	}
 	if(c_error < 0){
 		if(errno == EAGAIN)
 		{
@@ -638,6 +656,15 @@ void reception_data(){
 	*/
 	/*Attendo la lunghezza del file*/
 	c_error = recvfrom(socketone, buffer, MAX_DIM_MESSAGE, 0, (SA *) &servaddr, &len);
+	if(strncmp("1998", buffer, strlen("1998")) == 0){
+		printf("Client port %d -> Richiesto exit\n",port_client);
+		printf("[FASE EXIT]\n");
+		f_esci(port_client,socketone,parent_pid);
+		while(1){
+			sleep(500);
+		}
+		bzero(buffer, MAX_DIM_MESSAGE);
+	}
 	if(c_error < 0){
 		herror("c_errorore nella recvfrom della receive_len_file del server.");
 	}
@@ -882,6 +909,15 @@ int send_packet_GO_BACK_N(struct pacchetto *file_struct, int seq, int offset){//
 		printf("Attendo ACK [%d]\n",seq+si);
 		bzero(buffer, MAX_DIM_MESSAGE);
 		int err = recvfrom(socketone,buffer, MAX_DIM_MESSAGE, 0, (SA *) &servaddr, &len);//Vado in attesa del riscontro da parte del server
+		if(strncmp("1998", buffer, strlen("1998")) == 0){
+			printf("Client port %d -> Richiesto exit\n",port_client);
+			printf("[FASE EXIT]\n");
+			f_esci(port_client,socketone,parent_pid);
+			while(1){
+				sleep(500);
+			}
+			bzero(buffer, MAX_DIM_MESSAGE);
+		}
 		errno=0;
 		/*Caso perdo il pacchetto*/
 		if (err < 0){

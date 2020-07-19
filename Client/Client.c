@@ -25,11 +25,11 @@
 #define DIMENSIONE_MESSAGGI 1064 //Dimensione totale del messaggio che inviamo nell'applicativo
 #define SA struct sockaddr //Struttura della socket
 #define CODICE 25463 //Codice di utility per gestire la chiusura del server
-#define CODICE2 54654 //Codice di utility per gestire l'impossibilità di aggiungere un client
 #define DIMENSIONE_PACCHETTO 1024 // dimensione del payload nel pacchetto UDP affidabile
 #define DIMENSIONE_FINESTRA 3 // dimensione della finestra di spedizione
 #define SEND_FILE_TIMEOUT 100000 // timeout di invio
 #define L_PROB 15 // probabilità di perdita
+#define USCITA 1998
 
 
 /*strutture*/
@@ -44,7 +44,6 @@ void lista_dei_file(int, struct sockaddr_in, socklen_t);
 int creazione_socket(int);
 void setTimeout(double,int);
 void *esci();
-void lista_dei_file(int , struct sockaddr_in , socklen_t );
 void reception_data();
 void recive_UDP_GO_BACK_N();
 int sendACK(int ,int );
@@ -438,17 +437,18 @@ void setTimeout(double time,int id) {
 }
 
 void *esci(){
+	printf("\n");
 	bzero(buffer, DIMENSIONE_MESSAGGI);
-	snprintf(buffer, DIMENSIONE_MESSAGGI, "1");
+	sprintf(buffer, "%d", USCITA);
 	err = sendto(socketone, buffer, sizeof(buffer), 0, (SA *) &servaddr, len);
 	// pulisco il buffer
 	bzero(buffer, DIMENSIONE_MESSAGGI);
 	if (err < 0){
 		perror("Errore nell'invio del messaggio di chiusura da parte del client\n");
 	}
-	
 	// chiudo la socket
 	close(socketone);
+	bzero(buffer, DIMENSIONE_MESSAGGI);
 	exit(1);
 }
 
@@ -614,7 +614,6 @@ int upload(){
 	//Invio al server l'azione che voglio fare
 			id=0;
 			err = sendto(socketone, buffer, sizeof(buffer), 0, (SA *) &servaddr, len);
-			printf("Ho inviato %s\n",buffer);
 			if (err < 0){
 				perror("Errore nella sendto nella sezione del servizio di upload del client.");
 			}
@@ -645,11 +644,14 @@ int upload(){
 				printf("Errore apertura file\n");
 				return 0;
 			}
-			if(file<0){printf("Errore apertura lista dei file");}
+			if(file<0){
+				printf("Errore apertura lista dei file");
+			}
 			/*
 			Calcolo la lunghezza complessiva del file facendo scorrere la testina dall'inzio alla fine
 			lseek ritornerà l'intera grandezza del file
 			*/
+			lseek(file,0,0);
 			dimensione = lseek(file,0,SEEK_END);//Scorro la testina dall'inzio alla fine
 			lista_dei_files = malloc(dimensione);//Alloco tanta memoria per contenerlo
 			lseek(file,0,0);//riposiziono la testina all'inzio del file(meotodo di accesso diretto)
